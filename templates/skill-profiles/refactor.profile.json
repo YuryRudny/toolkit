@@ -1,0 +1,14 @@
+{
+  "profileId": "refactor",
+  "title": "Refactor Senior Playbook",
+  "requiredRoles": [
+    { "id": "behaviorCharacterization", "title": "Фиксация Поведения", "purpose": "До refactor понять и зафиксировать текущее поведение.", "seedHints": ["characterization", "behavior", "tests"], "projectEvidence": ["criticalFlows", "smoke-checklist"] },
+    { "id": "sliceDesign", "title": "Safe Slice", "purpose": "Разбить refactor на минимальные обратимые изменения.", "seedHints": ["small steps", "slice", "refactor"], "projectEvidence": ["refactor-plan", "architecture-map"] },
+    { "id": "contractProtection", "title": "Защита Контрактов", "purpose": "Не менять внешние API/DTO/props без явной миграции.", "seedHints": ["contract", "interface", "API"], "projectEvidence": ["projectHooks", "types", "DTO"] },
+    { "id": "callerAudit", "title": "Аудит Callers", "purpose": "Проверить все места использования перед изменением shape.", "seedHints": ["callers", "references", "usage"], "projectEvidence": ["source search"] },
+    { "id": "migrationPlan", "title": "План Миграции", "purpose": "Описать порядок безопасного переноса.", "seedHints": ["migration", "transition"], "projectEvidence": ["refactor-plan"] },
+    { "id": "rollbackPlan", "title": "Rollback", "purpose": "Понимать, как откатить slice без каскада.", "seedHints": ["rollback", "safe"], "projectEvidence": ["git diff", "checks"] },
+    { "id": "deadCodeRemoval", "title": "Удаление Мёртвого Кода", "purpose": "Удалять только после подтверждения отсутствия usage.", "seedHints": ["dead code", "remove"], "projectEvidence": ["rg usage", "tests"] },
+    { "id": "resultFormat", "title": "Формат Результата", "purpose": "Показать поведение до/после, проверки, риски и следующий slice.", "seedHints": ["result", "format"], "projectEvidence": ["skill resultFormat"] }
+  ]
+}

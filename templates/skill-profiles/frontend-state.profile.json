@@ -1,0 +1,12 @@
+{
+  "profileId": "frontend-state",
+  "title": "Frontend State And Data Senior Playbook",
+  "requiredRoles": [
+    { "id": "dataOwnership", "title": "Владение Данными", "purpose": "Определить источник истины и владельца состояния.", "seedHints": ["state", "ownership", "source of truth"], "projectEvidence": ["stores", "composables", "criticalFlows"] },
+    { "id": "contractBoundary", "title": "Контракт Границы", "purpose": "Проверить DTO/schema/runtime normalization на внешней границе.", "seedHints": ["contract", "schema", "validation"], "projectEvidence": ["repositories", "DTO", "API"] },
+    { "id": "asyncConsistency", "title": "Async Consistency", "purpose": "Проверить stale responses, cancellation, dedup, race и cache behavior.", "seedHints": ["async", "race", "cache"], "projectEvidence": ["criticalFlows", "risk-register"] },
+    { "id": "stateMatrix", "title": "Матрица Состояний", "purpose": "Согласовать loading, empty, error, success и permission состояния.", "seedHints": ["loading", "error", "state"], "projectEvidence": ["UI consumers", "smoke-checklist"] },
+    { "id": "mutationSafety", "title": "Безопасность Мутаций", "purpose": "Проверить optimistic updates, rollback и server authority.", "seedHints": ["mutation", "rollback", "authority"], "projectEvidence": ["stores", "repositories", "API contracts"] },
+    { "id": "resultFormat", "title": "Формат Результата", "purpose": "Показать data flow, contracts, state transitions, checks и gaps.", "seedHints": ["result", "format"], "projectEvidence": ["skill resultFormat"] }
+  ]
+}

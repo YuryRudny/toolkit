@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Skills Generator"
+  short_description: "Сгенерировать project-local skills"
+  default_prompt: "Используй $project-skills-assembler, чтобы собрать project-local skills из RAG, selected library skills, adaptation sheets и full templates."

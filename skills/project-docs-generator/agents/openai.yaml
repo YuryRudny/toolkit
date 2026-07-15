@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Docs Generator"
+  short_description: "Создать project operating docs"
+  default_prompt: "Используй $project-docs-generator, чтобы создать project documentation из discovery и audit findings."

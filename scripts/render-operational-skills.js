@@ -1,0 +1,148 @@
+#!/usr/bin/env node
+
+const fs = require("fs");
+const path = require("path");
+const { spawnSync } = require("child_process");
+
+const root = path.resolve(process.argv[2] || process.cwd());
+const toolkitRoot = path.resolve(__dirname, "..");
+const outRoot = path.join(root, "codex-skills", "skills");
+const entryPath = path.join(root, "AGENTS.md");
+const entryTemplatePath = path.join(toolkitRoot, "templates", "project-rules", "AGENTS.template.md");
+const entryStart = "<!-- reusable-agent-system-toolkit:start -->";
+const entryEnd = "<!-- reusable-agent-system-toolkit:end -->";
+
+const templates = [
+  ["project-authority", "project-authority.template.md"],
+  ["research-audit", "research-audit.template.md"],
+  ["pre-change-checklist", "pre-change-checklist.template.md"],
+  ["review-checklist", "review-checklist.template.md"],
+  ["stack-quality", "stack-quality.template.md"],
+  ["git-remote-flow", "git-remote-flow.template.md"],
+];
+
+function ensureDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function readJson(rel) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, rel), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeSkill(name, text) {
+  const outPath = path.join(outRoot, name, "SKILL.md");
+  ensureDir(path.dirname(outPath));
+  fs.writeFileSync(outPath, text);
+  return path.relative(root, outPath);
+}
+
+function renderProjectEntry() {
+  if (!fs.existsSync(entryTemplatePath)) {
+    console.error(`Missing project entry template: ${path.relative(toolkitRoot, entryTemplatePath)}`);
+    process.exit(1);
+  }
+
+  const body = fs.readFileSync(entryTemplatePath, "utf8")
+    .replaceAll("<PROJECT_SKILLS_PATH>", "codex-skills/skills")
+    .trim();
+  const managedBlock = `${entryStart}\n${body}\n${entryEnd}`;
+
+  if (!fs.existsSync(entryPath)) {
+    fs.writeFileSync(entryPath, `${managedBlock}\n`);
+    return "AGENTS.md (created)";
+  }
+
+  const existing = fs.readFileSync(entryPath, "utf8");
+  const startIndex = existing.indexOf(entryStart);
+  const endIndex = existing.indexOf(entryEnd);
+  if (startIndex >= 0 && endIndex > startIndex) {
+    const before = existing.slice(0, startIndex).trimEnd();
+    const after = existing.slice(endIndex + entryEnd.length).trimStart();
+    fs.writeFileSync(entryPath, `${before ? `${before}\n\n` : ""}${managedBlock}${after ? `\n\n${after.trimEnd()}` : ""}\n`);
+    return "AGENTS.md (updated managed block)";
+  }
+
+  fs.writeFileSync(entryPath, `${existing.trimEnd()}\n\n${managedBlock}\n`);
+  return "AGENTS.md (merged with existing rules)";
+}
+
+const rendered = [];
+for (const [skillName, templateName] of templates) {
+  const templatePath = path.join(toolkitRoot, "templates", "skills", templateName);
+  if (!fs.existsSync(templatePath)) {
+    console.error(`Missing operational skill template: ${path.relative(toolkitRoot, templatePath)}`);
+    process.exit(1);
+  }
+  let text = fs.readFileSync(templatePath, "utf8");
+  if (skillName === "git-remote-flow") {
+    const git = readJson("docs/agent-system/project-model.json")?.integrations?.git || {};
+    text = text
+      .replace("- Remote:", `- Remote: ${git.remote || "не определён"}`)
+      .replace("- Базовая ветка:", `- Базовая ветка: ${git.branch || "требует project policy"}`);
+  }
+  rendered.push(writeSkill(skillName, text));
+}
+
+const planned = readJson("docs/agent-system/skill-inputs/index.json")?.targetSkills || [];
+const active = fs.existsSync(outRoot)
+  ? fs.readdirSync(outRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+  : [];
+const available = new Set([...active, ...planned, "workflow-router"]);
+const select = (...names) => names.filter((name) => available.has(name));
+
+const modes = [
+  ["Research", "ресерч, research, глубокий анализ, карта проекта", select("project-authority", "research-audit", "review-checklist")],
+  ["Development", "feature, bugfix, Jira task, изменение кода", select("project-authority", "pre-change-checklist", "stack-quality", "review-checklist")],
+  ["Review", "ревью, review, проверка diff", select("project-authority", "code-review-and-quality", "review-checklist")],
+  ["Debugging", "ошибка, падение, flaky behavior, regression", select("project-authority", "debugging-and-error-recovery", "review-checklist")],
+  ["Refactor", "рефактор, architecture debt, следующий slice", select("project-authority", "refactor-engineering", "pre-change-checklist", "review-checklist")],
+  ["Merge/Publish", "commit, push, merge, MR", select("project-authority", "git-remote-flow", "review-checklist")],
+];
+
+const modeSections = modes.map(([title, triggers, skills]) => `### ${title} Mode\n\nТриггеры: ${triggers}.\n\nОбязательные skills: ${skills.map((name) => `\`${name}\``).join(", ") || "нет"}.`).join("\n\n");
+const router = `---
+name: workflow-router
+description: Выбирает режим и только реально зарегистрированные project-local skills. Используй в начале задачи, при смене scope и перед development, research, review, debugging, refactor или publish действиями.
+---
+
+# Маршрутизатор Работы
+
+## Порядок работы
+
+1. Прочитай \`docs/agent-system/skill-registry.json\` и \`docs/agent-system/knowledge-index.md\`.
+2. Определи режим по задаче.
+3. Загрузи обязательные skills режима только если их status равен \`active\`.
+4. Выбери дополнительные stack/domain skills из registry по touched layer.
+5. Если scope изменился, повтори маршрутизацию.
+6. После edits примени \`review-checklist\`.
+
+## Режимы
+
+${modeSections}
+
+## Инварианты
+
+- Не называй и не загружай skill, которого нет в registry со status \`active\`.
+- Для Jira/Confluence используй access-policy skill только если он активен и probe status подтверждён.
+- При устаревшем project-model выполняй targeted discovery до изменения.
+- Research обновляет model/RAG, если обнаружены новые modules, flows, findings или gaps.
+`;
+rendered.push(writeSkill("workflow-router", router));
+
+const registryResult = spawnSync(process.execPath, [path.join(toolkitRoot, "scripts", "create-skill-registry.js"), root], {
+  cwd: root,
+  stdio: "inherit",
+});
+if (registryResult.status !== 0) process.exit(registryResult.status || 1);
+const authorityResult = spawnSync(process.execPath, [path.join(toolkitRoot, "scripts", "create-authority-map.js"), root], {
+  cwd: root,
+  stdio: "inherit",
+});
+if (authorityResult.status !== 0) process.exit(authorityResult.status || 1);
+
+const entryResult = renderProjectEntry();
+console.log(`Rendered operational skills: ${rendered.join(", ")}; ${entryResult}`);

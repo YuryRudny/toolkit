@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Agent Bootstrap"
+  short_description: "Запустить reusable agent setup"
+  default_prompt: "Ты находишься в корне целевого проекта. Открой локальный файл ./reusable-agent-system-toolkit/skills/project-agent-bootstrap/SKILL.md и следуй ему. Не ищи toolkit в ~/.codex/plugins/node_modules/соседних проектах. Если файла нет, остановись; не создавай fallback skills."

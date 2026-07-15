@@ -1,0 +1,196 @@
+{
+  "version": 1,
+  "source": "skill-seeds/external/ai-agents-skills-main",
+  "importedAt": "2026-07-08",
+  "libraryId": "ai-agents-skills-main",
+  "skillBase": "skill-seeds/external/ai-agents-skills-main/skills",
+  "libraryResources": [
+    "skill-seeds/external/ai-agents-skills-main/agents",
+    "skill-seeds/external/ai-agents-skills-main/docs",
+    "skill-seeds/external/ai-agents-skills-main/prompts",
+    "skill-seeds/external/ai-agents-skills-main/references"
+  ],
+  "policy": {
+    "language": "ru-generated-output",
+    "copyMode": "adapt-to-project",
+    "includeOriginalResources": true,
+    "excludeFixtures": true
+  },
+  "count": 9,
+  "categories": {
+    "architecture": 4,
+    "devops": 1,
+    "frontend": 1,
+    "general": 3
+  },
+  "seeds": [
+    {
+      "id": "external-ci-cd-and-automation",
+      "source": "ai-agents-skills-main",
+      "category": "devops",
+      "path": "skill-seeds/external/ai-agents-skills-main/skills/ci-cd-and-automation/SKILL.md",
+      "folder": "skill-seeds/external/ai-agents-skills-main/skills/ci-cd-and-automation",
+      "originalName": "ci-cd-and-automation",
+      "description": "Автоматизирует настройку конвейера CI/CD. Используй при настройке или изменении конвейеров сборки и развертывания. Используй, когда тебе нужно автоматизировать фильтры качества (quality gates), настроить запуск тестов в CI или определить стратегии развертывания.",
+      "resources": [],
+      "detect": {
+        "nameHints": [
+          "ci",
+          "cd",
+          "and",
+          "automation"
+        ]
+      },
+      "targets": [],
+      "priority": "normal"
+    },
+    {
+      "id": "external-code-review-and-quality",
+      "source": "ai-agents-skills-main",
+      "category": "architecture",
+      "path": "skill-seeds/external/ai-agents-skills-main/skills/code-review-and-quality/SKILL.md",
+      "folder": "skill-seeds/external/ai-agents-skills-main/skills/code-review-and-quality",
+      "originalName": "code-review-and-quality",
+      "description": "Проводит многомерное ревью кода. Использовать перед слиянием любых изменений. Использовать при проверке кода, написанного тобой, другим агентом или человеком. Использовать, когда необходимо оценить качество кода по нескольким направлениям до его попадания в основную ветку.",
+      "resources": [],
+      "detect": {
+        "nameHints": [
+          "code",
+          "review",
+          "and",
+          "quality"
+        ]
+      },
+      "targets": [],
+      "priority": "normal"
+    },
+    {
+      "id": "external-debugging-and-error-recovery",
+      "source": "ai-agents-skills-main",
+      "category": "architecture",
+      "path": "skill-seeds/external/ai-agents-skills-main/skills/debugging-and-error-recovery/SKILL.md",
+      "folder": "skill-seeds/external/ai-agents-skills-main/skills/debugging-and-error-recovery",
+      "originalName": "debugging-and-error-recovery",
+      "description": "Руководство по систематической отладке первопричин ошибок. Используй, когда падают тесты, ломается сборка, поведение не соответствует ожиданиям или возникает любая непредвиденная ошибка. Используй для систематического поиска и устранения первопричины вместо интуитивного угадывания.",
+      "resources": [],
+      "detect": {
+        "nameHints": [
+          "debugging",
+          "and",
+          "error",
+          "recovery"
+        ]
+      },
+      "targets": [],
+      "priority": "normal"
+    },
+    {
+      "id": "external-dnote",
+      "source": "ai-agents-skills-main",
+      "category": "general",
+      "path": "skill-seeds/external/ai-agents-skills-main/skills/dnote/SKILL.md",
+      "folder": "skill-seeds/external/ai-agents-skills-main/skills/dnote",
+      "originalName": "dnote",
+      "description": "Управление личными заметками с помощью CLI-инструмента Dnote. Используй для создания, просмотра, редактирования и синхронизации заметок между устройствами. Поддерживает полнотекстовый поиск и организацию по книгам (books).",
+      "resources": [],
+      "detect": {
+        "nameHints": [
+          "dnote"
+        ]
+      },
+      "targets": [],
+      "priority": "normal"
+    },
+    {
+      "id": "external-frontend-ui-engineering",
+      "source": "ai-agents-skills-main",
+      "category": "frontend",
+      "path": "skill-seeds/external/ai-agents-skills-main/skills/frontend-ui-engineering/SKILL.md",
+      "folder": "skill-seeds/external/ai-agents-skills-main/skills/frontend-ui-engineering",
+      "originalName": "frontend-ui-engineering",
+      "description": "Создает интерфейсы промышленного качества. Используй при разработке или изменении интерфейсов, ориентированных на пользователей. Используй при создании компонентов, реализации макетов, управлении состоянием или когда результат должен выглядеть как готовый продукт, а не сгенерированный ИИ шаблон.",
+      "resources": [],
+      "detect": {
+        "nameHints": [
+          "frontend",
+          "ui",
+          "engineering"
+        ]
+      },
+      "targets": [],
+      "priority": "normal"
+    },
+    {
+      "id": "external-gmail-triage",
+      "source": "ai-agents-skills-main",
+      "category": "general",
+      "path": "skill-seeds/external/ai-agents-skills-main/skills/gmail-triage/SKILL.md",
+      "folder": "skill-seeds/external/ai-agents-skills-main/skills/gmail-triage",
+      "originalName": "gmail-triage",
+      "description": "Автономный навык для чтения непрочитанных писем, их маркировки и создания черновиков ответов с помощью CLI-инструмента gog.",
+      "resources": [],
+      "detect": {
+        "nameHints": [
+          "gmail",
+          "triage"
+        ]
+      },
+      "targets": [],
+      "priority": "normal"
+    },
+    {
+      "id": "external-humanizer",
+      "source": "ai-agents-skills-main",
+      "category": "general",
+      "path": "skill-seeds/external/ai-agents-skills-main/skills/humanizer/SKILL.md",
+      "folder": "skill-seeds/external/ai-agents-skills-main/skills/humanizer",
+      "originalName": "humanizer",
+      "description": "|",
+      "resources": [],
+      "detect": {
+        "nameHints": [
+          "humanizer"
+        ]
+      },
+      "targets": [],
+      "priority": "normal"
+    },
+    {
+      "id": "external-mr-review",
+      "source": "ai-agents-skills-main",
+      "category": "architecture",
+      "path": "skill-seeds/external/ai-agents-skills-main/skills/mr-review/SKILL.md",
+      "folder": "skill-seeds/external/ai-agents-skills-main/skills/mr-review",
+      "originalName": "mr-review",
+      "description": "Специализированный навык агента-разработчика для проведения контекстно-зависимых обзоров запросов на слияние (MR) с использованием интеграций gitlab-mcp и Atlassian. Навык проверяет бизнес-требования, архитектурную согласованность, безопасность, тестирование и соглашения репозитория, сводя к минимуму шумную обратную связь от ИИ",
+      "resources": [],
+      "detect": {
+        "nameHints": [
+          "mr",
+          "review"
+        ]
+      },
+      "targets": [],
+      "priority": "normal"
+    },
+    {
+      "id": "external-spec-driven-development",
+      "source": "ai-agents-skills-main",
+      "category": "architecture",
+      "path": "skill-seeds/external/ai-agents-skills-main/skills/spec-driven-development/SKILL.md",
+      "folder": "skill-seeds/external/ai-agents-skills-main/skills/spec-driven-development",
+      "originalName": "spec-driven-development",
+      "description": "Создает спецификации перед написанием кода. Используй при запуске нового проекта, фичи или значительных изменениях, когда спецификация еще не создана. Используй, когда требования неясны, двусмысленны или существуют только в виде общей идеи.",
+      "resources": [],
+      "detect": {
+        "nameHints": [
+          "spec",
+          "driven",
+          "development"
+        ]
+      },
+      "targets": [],
+      "priority": "normal"
+    }
+  ]
+}

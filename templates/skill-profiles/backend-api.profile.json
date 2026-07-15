@@ -1,0 +1,13 @@
+{
+  "profileId": "backend-api",
+  "title": "Backend/API Senior Playbook",
+  "requiredRoles": [
+    { "id": "entryBoundary", "title": "Граница Входа", "purpose": "Понять route/controller/handler и trust boundary.", "seedHints": ["API", "handler", "boundary"], "projectEvidence": ["projectHooks", "architecture-map"] },
+    { "id": "validationPolicy", "title": "Validation Policy", "purpose": "Проверить runtime validation, schema и unsafe input.", "seedHints": ["validation", "schema", "input"], "projectEvidence": ["DTO", "risk-register"] },
+    { "id": "authPolicy", "title": "Auth/Permission", "purpose": "Проверить авторизацию, ownership и scope.", "seedHints": ["auth", "permission", "security"], "projectEvidence": ["risk-register", "criticalFlows"] },
+    { "id": "errorContract", "title": "Error Contract", "purpose": "Ошибки должны быть стабильными, безопасными и понятными consumer.", "seedHints": ["error", "contract"], "projectEvidence": ["API consumers"] },
+    { "id": "resourceLifecycle", "title": "Resource Lifecycle", "purpose": "Проверить memory, streams, timers, connections и cache.", "seedHints": ["resource", "memory", "cache"], "projectEvidence": ["performance risks"] },
+    { "id": "observability", "title": "Observability", "purpose": "Оставить полезную диагностику без утечки секретов.", "seedHints": ["logs", "metrics", "trace"], "projectEvidence": ["local logging patterns"] },
+    { "id": "resultFormat", "title": "Формат Результата", "purpose": "Показать endpoint/contract/security/performance/checks.", "seedHints": ["result", "format"], "projectEvidence": ["skill resultFormat"] }
+  ]
+}

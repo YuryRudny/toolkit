@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Discovery"
+  short_description: "Карта stack, architecture и rules"
+  default_prompt: "Используй $project-discovery, чтобы изучить репозиторий перед созданием project-local agent skills."

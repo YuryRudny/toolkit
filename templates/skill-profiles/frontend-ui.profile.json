@@ -1,0 +1,15 @@
+{
+  "profileId": "frontend-ui",
+  "title": "Frontend UI Senior Playbook",
+  "requiredRoles": [
+    { "id": "uiSurfaceMap", "title": "Карта UI Surface", "purpose": "Определить страницы, компоненты, layout и состояние данных.", "seedHints": ["component", "page", "layout"], "projectEvidence": ["project-map", "projectHooks"] },
+    { "id": "componentQualityBar", "title": "Планка Компонента", "purpose": "Компонент должен быть поддерживаемым, доступным и визуально отполированным.", "seedHints": ["component quality", "accessibility", "polish"], "projectEvidence": ["local component patterns"] },
+    { "id": "stateMatrix", "title": "Матрица Состояний", "purpose": "Проверить loading, empty, error, disabled, success и permission states.", "seedHints": ["states", "loading", "error", "empty"], "projectEvidence": ["criticalFlows", "smoke-checklist"] },
+    { "id": "accessibilityPass", "title": "Accessibility Pass", "purpose": "Проверить keyboard, labels, focus и custom controls.", "seedHints": ["accessibility", "keyboard", "focus"], "projectEvidence": ["UI source"] },
+    { "id": "responsivePass", "title": "Responsive Pass", "purpose": "Проверить mobile/desktop, overflow и локализации.", "seedHints": ["responsive", "mobile", "text"], "projectEvidence": ["smoke-checklist"] },
+    { "id": "visualPolishPass", "title": "Visual Polish", "purpose": "Сохранять дизайн-систему и не вводить случайный visual language.", "seedHints": ["visual", "design", "spacing"], "projectEvidence": ["neighbor components", "styles"] },
+    { "id": "unsafeHtmlRules", "title": "Unsafe HTML", "purpose": "Обрабатывать raw HTML, sanitization и trust boundary.", "seedHints": ["html", "xss", "sanitize"], "projectEvidence": ["risk-register", "source search"] },
+    { "id": "ssrClientGuards", "title": "SSR/Client Guards", "purpose": "Не ломать SSR browser API и hydration.", "seedHints": ["SSR", "browser", "client"], "projectEvidence": ["stack-profile", "source"] },
+    { "id": "resultFormat", "title": "Формат Результата", "purpose": "Показать surfaces, states, accessibility, responsive, gaps.", "seedHints": ["result", "format"], "projectEvidence": ["skill resultFormat"] }
+  ]
+}

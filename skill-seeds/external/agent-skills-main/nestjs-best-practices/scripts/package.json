@@ -1,0 +1,15 @@
+{
+  "name": "nestjs-best-practices-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Build scripts for NestJS Best Practices skillset",
+  "scripts": {
+    "build": "npm exec --no -- ts-node build-agents.ts",
+    "build:watch": "npm exec --no -- nodemon --watch ../rules --ext md --exec 'npm exec --no -- ts-node build-agents.ts'"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.0.0"
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.reusable-agent-system-toolkit/project-model.schema.json",
+  "title": "Project Model",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "projectRoot",
+    "fingerprint",
+    "capabilities",
+    "manifests",
+    "sourceRoots",
+    "modules",
+    "entryPoints",
+    "existingRules",
+    "criticalFlows",
+    "boundaries",
+    "findings",
+    "gaps",
+    "integrations"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "projectRoot": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "minLength": 1 },
+    "updatedAt": { "type": "string", "minLength": 1 },
+    "fingerprint": { "type": "string", "minLength": 8 },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": { "type": "boolean" }
+    },
+    "manifests": { "type": "array", "items": { "$ref": "#/$defs/pathEvidence" } },
+    "sourceRoots": { "type": "array", "items": { "type": "string" } },
+    "modules": { "type": "array", "items": { "$ref": "#/$defs/module" } },
+    "entryPoints": { "type": "array", "items": { "$ref": "#/$defs/entryPoint" } },
+    "existingRules": { "type": "array", "items": { "$ref": "#/$defs/pathEvidence" } },
+    "criticalFlows": { "type": "array", "items": { "type": "object" } },
+    "boundaries": { "type": "array", "items": { "type": "object" } },
+    "findings": { "type": "array", "items": { "type": "object" } },
+    "gaps": { "type": "array", "items": { "type": "object" } },
+    "integrations": { "type": "object" },
+    "research": { "type": "object" },
+    "skillPlan": { "type": "object" }
+  },
+  "$defs": {
+    "pathEvidence": {
+      "type": "object",
+      "required": ["path", "kind"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 }
+      }
+    },
+    "module": {
+      "type": "object",
+      "required": ["id", "path", "fileCount", "languages", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "fileCount": { "type": "integer", "minimum": 0 },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "status": { "enum": ["discovered", "researched", "not-applicable"] },
+        "responsibility": { "type": "string" },
+        "evidence": { "type": "array" }
+      }
+    },
+    "entryPoint": {
+      "type": "object",
+      "required": ["id", "path", "kind", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["discovered", "traced", "not-applicable"] },
+        "flowIds": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

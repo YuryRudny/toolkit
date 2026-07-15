@@ -1,0 +1,14 @@
+{
+  "profileId": "debugging",
+  "title": "Debugging Senior Playbook",
+  "requiredRoles": [
+    { "id": "symptomCapture", "title": "Фиксация Симптома", "purpose": "Сначала зафиксировать наблюдаемый сбой, входные данные и среду.", "seedHints": ["symptom", "error", "logs"], "projectEvidence": ["current-state", "ticket", "logs"] },
+    { "id": "reproductionLadder", "title": "Лестница Воспроизведения", "purpose": "Идти от минимального воспроизведения к полному пользовательскому flow.", "seedHints": ["reproduce", "minimal", "steps"], "projectEvidence": ["criticalFlows", "smoke-checklist"] },
+    { "id": "layerIsolation", "title": "Изоляция Слоя", "purpose": "Отделить UI/state/API/cache/runtime проблему от симптома.", "seedHints": ["isolate", "layer", "boundary"], "projectEvidence": ["projectHooks", "architecture-map"] },
+    { "id": "failureTaxonomy", "title": "Таксономия Сбоев", "purpose": "Классифицировать тип дефекта и выбрать проверку.", "seedHints": ["failure", "root cause", "taxonomy"], "projectEvidence": ["risk-register"] },
+    { "id": "rootCauseProtocol", "title": "Root Cause Protocol", "purpose": "Исправлять причину, а не маскировать симптом.", "seedHints": ["root cause", "fix"], "projectEvidence": ["source evidence", "criticalFlows"] },
+    { "id": "regressionProtection", "title": "Регрессионная Защита", "purpose": "Добавить или выбрать проверку, которая ловит именно этот сбой.", "seedHints": ["regression", "test", "verify"], "projectEvidence": ["smoke-checklist", "package scripts"] },
+    { "id": "diagnosticCleanup", "title": "Очистка Диагностики", "purpose": "Удалить временный шум и оставить полезную observability.", "seedHints": ["cleanup", "logs", "diagnostics"], "projectEvidence": ["local patterns"] },
+    { "id": "resultFormat", "title": "Формат Результата", "purpose": "Показать симптом, причину, fix, проверку и остаточный риск.", "seedHints": ["result", "format"], "projectEvidence": ["skill resultFormat"] }
+  ]
+}

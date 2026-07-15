@@ -1,0 +1,4 @@
+interface:
+  display_name: "Existing Rules Merge"
+  short_description: "Смержить local и new agent rules"
+  default_prompt: "Используй $existing-rules-merge, чтобы объединить existing repository agent rules с generated system."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deep Project Audit"
+  short_description: "Найти architecture и code risks"
+  default_prompt: "Используй $deep-project-audit, чтобы провести evidence-based audit этого репозитория."

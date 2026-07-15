@@ -1,0 +1,11 @@
+{
+  "profileId": "mobile-capacitor",
+  "title": "Mobile Capacitor Senior Playbook",
+  "requiredRoles": [
+    { "id": "shellBoundary", "title": "Mobile Shell Boundary", "purpose": "Отделить web app, native bridge и platform config.", "seedHints": ["Capacitor", "native", "bridge"], "projectEvidence": ["capacitor config", "projectHooks"] },
+    { "id": "permissionPolicy", "title": "Permissions", "purpose": "Проверить permissions, privacy strings и runtime request flow.", "seedHints": ["permissions", "privacy"], "projectEvidence": ["native config"] },
+    { "id": "pluginLifecycle", "title": "Plugin Lifecycle", "purpose": "Проверить listeners, cleanup и platform guards.", "seedHints": ["plugin", "listener", "cleanup"], "projectEvidence": ["source search"] },
+    { "id": "buildSync", "title": "Build/Sync", "purpose": "Понимать web build, sync и native project drift.", "seedHints": ["build", "sync"], "projectEvidence": ["package scripts"] },
+    { "id": "resultFormat", "title": "Формат Результата", "purpose": "Показать web/native scope, permissions, checks and gaps.", "seedHints": ["result", "format"], "projectEvidence": ["skill resultFormat"] }
+  ]
+}

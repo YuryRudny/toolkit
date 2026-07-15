@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "policy": {
+    "language": "ru",
+    "copyMode": "adapt-to-project",
+    "sourceOfTruth": "docs/agent-system + research-workspace",
+    "integrityFile": "skill-seeds/integrity.json",
+    "externalTrust": "untrusted-advisory",
+    "forbidden": [
+      "blind-copy",
+      "english-runtime-instructions",
+      "seed-without-stack-evidence",
+      "seed-that-duplicates-existing-local-authority"
+    ]
+  },
+  "seeds": [
+    {
+      "id": "architecture-code-review",
+      "category": "architecture",
+      "path": "skill-seeds/architecture/code-review/SEED.md",
+      "detect": {
+        "alwaysForFullInstall": true
+      },
+      "targets": [
+        "codex-skills/skills/code-review-and-quality/SKILL.md",
+        "codex-skills/references/code-review-playbook.md"
+      ],
+      "priority": "critical"
+    },
+    {
+      "id": "architecture-refactor",
+      "category": "architecture",
+      "path": "skill-seeds/architecture/refactor/SEED.md",
+      "detect": {
+        "alwaysForFullInstall": true
+      },
+      "targets": [
+        "codex-skills/skills/refactor-engineering/SKILL.md",
+        "codex-skills/references/refactor-playbook.md"
+      ],
+      "priority": "critical"
+    },
+    {
+      "id": "react-ui-quality",
+      "category": "frontend",
+      "path": "skill-seeds/frontend/react-ui/SEED.md",
+      "detect": {
+        "anyDependency": [
+          "react",
+          "vue",
+          "nuxt",
+          "next",
+          "@vue/runtime-core"
+        ],
+        "anyPath": [
+          "src/components",
+          "src/pages",
+          "app",
+          "pages",
+          "components"
+        ]
+      },
+      "targets": [
+        "codex-skills/skills/frontend-ui-engineering/SKILL.md",
+        "codex-skills/references/frontend-ui-playbook.md"
+      ],
+      "priority": "high"
+    },
+    {
+      "id": "nextjs",
+      "category": "frontend",
+      "path": "skill-seeds/frontend/nextjs/SEED.md",
+      "detect": {
+        "anyDependency": [
+          "next"
+        ],
+        "anyPath": [
+          "next.config.js",
+          "next.config.mjs",
+          "next.config.ts",
+          "app"
+        ]
+      },
+      "targets": [
+        "codex-skills/skills/frontend-ui-engineering/SKILL.md",
+        "codex-skills/references/nextjs-playbook.md"
+      ],
+      "priority": "high"
+    },
+    {
+      "id": "tailwind",
+      "category": "frontend",
+      "path": "skill-seeds/frontend/tailwind/SEED.md",
+      "detect": {
+        "anyDependency": [
+          "tailwindcss",
+          "@tailwindcss/vite",
+          "daisyui"
+        ],
+        "anyPath": [
+          "tailwind.config.js",
+          "tailwind.config.ts",
+          "postcss.config.js"
+        ]
+      },
+      "targets": [
+        "codex-skills/skills/frontend-ui-engineering/SKILL.md",
+        "codex-skills/references/frontend-ui-playbook.md"
+      ],
+      "priority": "medium"
+    },
+    {
+      "id": "nestjs",
+      "category": "backend",
+      "path": "skill-seeds/backend/nestjs/SEED.md",
+      "detect": {
+        "anyDependency": [
+          "@nestjs/core",
+          "@nestjs/common"
+        ],
+        "anyPath": [
+          "src/main.ts",
+          "nest-cli.json"
+        ]
+      },
+      "targets": [
+        "codex-skills/skills/backend-engineering/SKILL.md",
+        "codex-skills/references/backend-api-playbook.md"
+      ],
+      "priority": "high"
+    },
+    {
+      "id": "msw",
+      "category": "testing",
+      "path": "skill-seeds/testing/msw/SEED.md",
+      "detect": {
+        "anyDependency": [
+          "msw"
+        ],
+        "anyPath": [
+          "src/mocks",
+          "mocks",
+          "test",
+          "tests"
+        ]
+      },
+      "targets": [
+        "codex-skills/skills/testing-strategy/SKILL.md",
+        "codex-skills/references/testing-playbook.md"
+      ],
+      "priority": "medium"
+    },
+    {
+      "id": "zod",
+      "category": "validation",
+      "path": "skill-seeds/validation/zod/SEED.md",
+      "detect": {
+        "anyDependency": [
+          "zod",
+          "@zod/mini"
+        ]
+      },
+      "targets": [
+        "codex-skills/skills/stack-engineering/SKILL.md",
+        "codex-skills/references/backend-api-playbook.md",
+        "codex-skills/references/security-performance-playbook.md"
+      ],
+      "priority": "high"
+    },
+    {
+      "id": "capacitor",
+      "category": "mobile",
+      "path": "skill-seeds/mobile/capacitor/SEED.md",
+      "detect": {
+        "anyDependency": [
+          "@capacitor/core",
+          "@capacitor/ios",
+          "@capacitor/android"
+        ],
+        "anyPath": [
+          "capacitor.config.ts",
+          "capacitor.config.json",
+          "android",
+          "ios"
+        ]
+      },
+      "targets": [
+        "codex-skills/skills/frontend-ui-engineering/SKILL.md",
+        "codex-skills/references/mobile-capacitor-playbook.md"
+      ],
+      "priority": "medium"
+    }
+  ],
+  "externalLibraries": [
+    {
+      "id": "agent-skills-main",
+      "sourceName": "agent-skills-main",
+      "license": "unknown-review-required",
+      "folder": "skill-seeds/external/agent-skills-main",
+      "manifest": "skill-seeds/external/agent-skills-main.manifest.json",
+      "index": "skill-seeds/external/agent-skills-main.index.md",
+      "count": 110,
+      "policy": "adapt-to-project-after-rag"
+    },
+    {
+      "id": "ai-agents-skills-main",
+      "sourceName": "ai-agents-skills-main",
+      "license": "unknown-review-required",
+      "folder": "skill-seeds/external/ai-agents-skills-main",
+      "manifest": "skill-seeds/external/ai-agents-skills-main.manifest.json",
+      "index": "skill-seeds/external/ai-agents-skills-main.index.md",
+      "count": 9,
+      "policy": "prefer-for-core-quality-playbooks-after-rag"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "profileId": "testing",
+  "title": "Testing Senior Playbook",
+  "requiredRoles": [
+    { "id": "blastRadius", "title": "Blast Radius", "purpose": "Выбрать уровень теста по зоне изменения.", "seedHints": ["test", "scope", "risk"], "projectEvidence": ["projectHooks", "criticalFlows"] },
+    { "id": "regressionIntent", "title": "Regression Intent", "purpose": "Тест должен ловить конкретный дефект или риск.", "seedHints": ["regression", "assert"], "projectEvidence": ["risk-register", "ticket"] },
+    { "id": "testDataPolicy", "title": "Test Data", "purpose": "Данные должны отражать реальные edge cases без хрупкости.", "seedHints": ["fixtures", "data", "mock"], "projectEvidence": ["source examples"] },
+    { "id": "ciFit", "title": "CI Fit", "purpose": "Проверка должна быть воспроизводимой в локальном/CI контуре.", "seedHints": ["CI", "automation"], "projectEvidence": ["package scripts"] },
+    { "id": "gapPolicy", "title": "Gap Policy", "purpose": "Если тест невозможен сейчас, фиксировать blocker и smoke.", "seedHints": ["gap", "blocker"], "projectEvidence": ["bootstrap-quality-report"] },
+    { "id": "resultFormat", "title": "Формат Результата", "purpose": "Показать выбранный уровень теста, команды, coverage gaps.", "seedHints": ["result", "format"], "projectEvidence": ["skill resultFormat"] }
+  ]
+}

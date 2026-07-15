@@ -1,0 +1,12 @@
+{
+  "profileId": "security-performance",
+  "title": "Security/Performance Senior Playbook",
+  "requiredRoles": [
+    { "id": "trustBoundary", "title": "Trust Boundary", "purpose": "Определить внешние входы, секреты, auth и unsafe rendering.", "seedHints": ["security", "trust", "input"], "projectEvidence": ["risk-register", "source search"] },
+    { "id": "dependencyRisk", "title": "Dependency Risk", "purpose": "Проверить устаревшие, тяжёлые и risky зависимости.", "seedHints": ["dependency", "supply chain"], "projectEvidence": ["package lock", "dependency-review"] },
+    { "id": "runtimeCost", "title": "Runtime Cost", "purpose": "Найти memory leaks, resource leaks, cache и async lifecycle проблемы.", "seedHints": ["performance", "memory", "resource"], "projectEvidence": ["risk-register", "criticalFlows"] },
+    { "id": "bundleCost", "title": "Bundle Cost", "purpose": "Выявить тяжёлые libs и неудачные imports.", "seedHints": ["bundle", "size", "import"], "projectEvidence": ["dependencies", "source usage"] },
+    { "id": "mitigation", "title": "Mitigation", "purpose": "Разделить локальный fix, refactor item и monitoring gap.", "seedHints": ["mitigate", "fix", "risk"], "projectEvidence": ["refactor-plan"] },
+    { "id": "resultFormat", "title": "Формат Результата", "purpose": "Показать риск, evidence, impact, fix/check/follow-up.", "seedHints": ["result", "format"], "projectEvidence": ["skill resultFormat"] }
+  ]
+}

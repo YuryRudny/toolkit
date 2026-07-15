@@ -1,0 +1,11 @@
+{
+  "profileId": "generic",
+  "title": "Generic Senior Playbook",
+  "requiredRoles": [
+    { "id": "scope", "title": "Scope", "purpose": "Определить границы задачи и touched area.", "seedHints": ["scope", "task"], "projectEvidence": ["knowledge-index", "project-map"] },
+    { "id": "evidence", "title": "Evidence", "purpose": "Каждое действие привязать к RAG, source или команде.", "seedHints": ["evidence", "context"], "projectEvidence": ["RAG", "source"] },
+    { "id": "workflow", "title": "Workflow", "purpose": "Собрать понятный порядок действий.", "seedHints": ["workflow", "steps"], "projectEvidence": ["criticalFlows"] },
+    { "id": "quality", "title": "Quality", "purpose": "Определить проверяемую планку качества.", "seedHints": ["quality", "checks"], "projectEvidence": ["risk-register", "smoke-checklist"] },
+    { "id": "resultFormat", "title": "Формат Результата", "purpose": "Показать scope, changes, checks, risks.", "seedHints": ["result", "format"], "projectEvidence": ["skill resultFormat"] }
+  ]
+}

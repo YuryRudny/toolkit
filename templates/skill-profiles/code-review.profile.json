@@ -1,0 +1,15 @@
+{
+  "profileId": "code-review",
+  "title": "Code Review Senior Playbook",
+  "requiredRoles": [
+    { "id": "approvalCriteria", "title": "Критерий Одобрения", "purpose": "Что должно быть правдой, чтобы изменение можно было принять.", "seedHints": ["approval", "review", "quality", "correctness"], "projectEvidence": ["risk-register", "criticalFlows", "smoke-checklist"] },
+    { "id": "reviewLenses", "title": "Линзы Ревью", "purpose": "Какие измерения ревью нельзя пропускать.", "seedHints": ["correctness", "readability", "architecture", "security", "performance", "tests"], "projectEvidence": ["projectHooks", "localRisks"] },
+    { "id": "severityPolicy", "title": "Severity Policy", "purpose": "Как отличать blocker от suggestion.", "seedHints": ["severity", "critical", "important", "nit"], "projectEvidence": ["risk-register", "refactor-plan"] },
+    { "id": "changeSizePolicy", "title": "Размер Изменения", "purpose": "Как удерживать diff в безопасном slice.", "seedHints": ["scope", "blast radius", "minimal"], "projectEvidence": ["architecture-map", "project-map"] },
+    { "id": "architectureReview", "title": "Архитектурное Ревью", "purpose": "Как проверять boundaries, coupling и ownership.", "seedHints": ["architecture", "boundaries", "coupling"], "projectEvidence": ["architecture-map", "projectHooks"] },
+    { "id": "securityReview", "title": "Security Review", "purpose": "Как проверять trust boundaries и опасные входы.", "seedHints": ["security", "auth", "input", "xss"], "projectEvidence": ["risk-register", "dependency-review"] },
+    { "id": "performanceReview", "title": "Performance Review", "purpose": "Как искать runtime, memory и bundle regressions.", "seedHints": ["performance", "memory", "resource"], "projectEvidence": ["risk-register", "smoke-checklist"] },
+    { "id": "testingReview", "title": "Testing Review", "purpose": "Какая регрессионная защита нужна по blast radius.", "seedHints": ["tests", "validation", "coverage"], "projectEvidence": ["smoke-checklist", "package scripts"] },
+    { "id": "resultFormat", "title": "Формат Результата", "purpose": "Как выдавать findings с evidence и проверками.", "seedHints": ["result", "format", "findings"], "projectEvidence": ["skill resultFormat"] }
+  ]
+}

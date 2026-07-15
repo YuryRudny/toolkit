@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stack Engineering Standards"
+  short_description: "Создать coding quality skills"
+  default_prompt: "Используй $stack-engineering-standards, чтобы создать stack-specific frontend, backend, testing, security и performance rules."
