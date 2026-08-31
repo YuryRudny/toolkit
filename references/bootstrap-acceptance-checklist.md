@@ -28,7 +28,7 @@ Bootstrap считается успешным только если generated sy
 - Current state/worklog.
 - Existing rules merge doc, если existing rules/local skills найдены.
 - Enterprise integrations doc, если проект использует Jira/Confluence/Git/GitLab.
-- `.tmp/integration-env.sh`, `.tmp/jira-rest.sh`, `.tmp/confluence-rest.sh`, если Jira/Confluence setup включен.
+- Sidecar: `bin/enterprise-mcp.js`, ignored `.local/integrations.json` на настроенной машине и active `enterprise-context`; project-local: `.tmp/integration-env.sh`, `.tmp/jira-rest.sh`, `.tmp/confluence-rest.sh`.
 - В project-local режиме `.gitignore` содержит `reusable-agent-system-toolkit/`; в sidecar режиме `workspace-verify` подтверждает отсутствие agent artifacts во всех customer-code репозиториях.
 - Generated system validation checklist copied or referenced.
 - Bootstrap acceptance checklist copied or referenced.
@@ -40,7 +40,7 @@ Bootstrap считается успешным только если generated sy
 - Existing local skills были inventoried, получили authority decision и не были перезаписаны без решения.
 - Install wizard спросил env path или зафиксировал existing env source/skipped enterprise.
 - Install wizard объяснил, зачем нужен env, и не печатал secret values.
-- Если Jira/Confluence включены, helper scripts созданы из toolkit templates, executable и записаны в docs/access skills.
+- Если sidecar integrations включены, MCP runtime сгенерирован, Codex MCP установлен и read-only probes Jira/Confluence/GitLab/Figma выполнены; для project-local helper mode scripts созданы и executable.
 - Если install setup подбирал auth mode, winning mode записан в `.tmp/integration-env.sh`, `enterprise-integrations.md` и access-policy skill.
 - Если helper probe failed, bootstrap остановился с точным blocker или пользователь явно выбрал skip.
 - Install wizard спросил deep scan только после enterprise/MCP setup `pass` или `skipped` и предупредил о времени/токенах.

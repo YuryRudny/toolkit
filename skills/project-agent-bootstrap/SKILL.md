@@ -102,21 +102,15 @@ State machine проверяет prerequisites и отклоняет перех�
 3. Запусти install wizard до discovery:
    - объясни, что `.env` нужен агенту только для настройки воспроизводимого доступа к Jira, Confluence и Git/GitLab/MCP;
    - попроси путь до `.env` с токенами/URL для enterprise integrations, если путь еще не известен из existing project rules;
-   - явно скажи, что secret values не будут печататься или копироваться в docs/skills: полный env path хранится только в ignored `.tmp/integration-env.sh`, а в tracked docs/skills записываются helper path и имена required variables;
+   - явно скажи, что secret values не будут печататься или копироваться в docs/skills: в sidecar режиме полный env path хранится только в ignored `.local/integrations.json`, в project-local режиме — в ignored `.tmp/integration-env.sh`;
    - разреши пользователю написать `пропустить enterprise`, если подключение сейчас не нужно.
    - не спрашивай про deep scan в этом же сообщении. Deep scan question разрешен только после enterprise setup `pass` или `skipped`.
 4. Если пользователь дал env path:
-   - проверь, что toolkit содержит `templates/enterprise-scripts/integration-env.template.sh`, `templates/enterprise-scripts/jira-rest.template.sh`, `templates/enterprise-scripts/confluence-rest.template.sh`;
-   - если этих templates нет, остановись: это stale/incomplete toolkit copy. Сообщи missing files и попроси обновить toolkit. Не сочиняй helper scripts вручную и не спрашивай deep scan до устранения blocker или explicit `пропустить enterprise`;
-   - создай `.tmp/integration-env.sh`, `.tmp/jira-rest.sh`, `.tmp/confluence-rest.sh` из `templates/enterprise-scripts/*`;
-   - подставь env path только в ignored `.tmp/integration-env.sh`; не записывай абсолютный env path в tracked docs, skills, reports или RAG;
-   - подставь auth modes по умолчанию: `JIRA_AUTH_MODE=as-is`, `CONFLUENCE_AUTH_MODE=as-is`;
-   - сделай scripts executable;
-   - проверь наличие required variable names без вывода values;
-   - выполни read-only probes только для включенных систем: Jira `./.tmp/jira-rest.sh /rest/api/2/myself`, Confluence `./.tmp/confluence-rest.sh /rest/api/user/current`;
-   - если probe вернул 401/403 из-за auth format, попробуй install-only auth mode fallback в рамках того же helper: `as-is`, `bearer`, `basic`;
-   - если один mode сработал, запиши winning auth mode в `.tmp/integration-env.sh`, `enterprise-integrations.md` и access-policy skill. После этого runtime fallback запрещен;
-   - если env path неверный, variable отсутствует, token протух, DNS/network/probe сломан или все auth modes вернули ошибку, остановись и сообщи точный blocker. Если пользователь исправит env, повтори configured probe/fallback. Если пользователь пишет `пропустить`, пометь integration skipped/unavailable и продолжай без нее.
+   - в sidecar режиме проверь `templates/workspace/agentctl.template.js` и `enterprise-mcp.template.js`, выполни `render-workspace-runtime`, затем `node bin/agentctl.js integrations configure <env-path>`; команда обязана проверить Jira, Confluence, GitLab и Figma, установить project-namespaced MCP и не сохранять secret values;
+   - проверь, что `.local/` игнорируется Git, а `workspace.json` содержит только MCP name, local config path и required service names;
+   - в project-local режиме используй существующие `templates/enterprise-scripts/*`, создай `.tmp` helpers и выполни Jira/Confluence probes;
+   - auth mode должен быть задан env contract или однозначно выведен из готового header/username; runtime перебор токенов, transports и header permutations запрещён;
+   - если env path неверный, variable отсутствует, token протух, DNS/network/probe сломан или API вернул 401/403, остановись и сообщи точный blocker без secret values. Если пользователь исправит env, повтори тот же configured probe. Если пользователь пишет `пропустить`, пометь integration skipped/unavailable и продолжай без нее.
 5. Если пользователь пропустил enterprise setup, не генерируй active Jira/Confluence access skills; запиши gap и fail-fast правило.
 6. Только после enterprise setup `pass` или `skipped` спроси, запускать ли глубокое сканирование проекта:
    - объясни, что deep scan нужен для RAG базы, карты проекта, risk register, refactor plan, smoke checklist и stack-specific senior skills;

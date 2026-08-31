@@ -193,6 +193,13 @@ function readJsonSafe(file) {
   }
 }
 
+const workspaceManifest = readJsonSafe(path.join(root, "workspace.json"));
+if (workspaceManifest?.integrations) {
+  requiredOperationalSkills.push("enterprise-context");
+  if (!fs.existsSync(path.join(root, "bin", "enterprise-mcp.js"))) failures.push("bin/enterprise-mcp.js: missing configured enterprise runtime");
+  if (!fs.existsSync(path.join(root, "codex-skills", "references", "enterprise-context.md"))) failures.push("codex-skills/references/enterprise-context.md: missing enterprise contract");
+}
+
 function writeValidationResult(status, failureList) {
   fs.mkdirSync(path.dirname(validationResultPath), { recursive: true });
   fs.writeFileSync(validationResultPath, `${JSON.stringify({

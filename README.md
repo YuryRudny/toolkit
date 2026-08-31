@@ -23,10 +23,11 @@ node ../reusable-agent-system-toolkit-source/scripts/bootstrap.js workspace-snap
 node ../reusable-agent-system-toolkit-source/scripts/bootstrap.js create-workspace-model .
 node ../reusable-agent-system-toolkit-source/scripts/bootstrap.js render-workspace-runtime .
 node bin/agentctl.js install
+node bin/agentctl.js integrations configure /absolute/path/to/.env
 node bin/agentctl.js sync
 ```
 
-`agentctl sync` делает только `git pull --ff-only` внутреннего agent-system по уже настроенному SSH и обновляет локальные ссылки. Customer repositories он не переключает и не обновляет. `agentctl status` сравнивает их HEAD с RAG snapshot, а `commit-plan` блокирует agent artifacts в Git заказчика.
+`agentctl integrations configure` сохраняет только путь до env в ignored `.local/integrations.json`, устанавливает dependency-free STDIO MCP в пользовательский Codex config и выполняет read-only probes Jira, Confluence, GitLab и Figma. Значения токенов не копируются в Git или MCP config. `agentctl sync` делает только `git pull --ff-only` внутреннего agent-system по уже настроенному SSH и обновляет локальные ссылки. Customer repositories он не переключает и не обновляет. `agentctl status` сравнивает их HEAD с RAG snapshot, а `commit-plan` блокирует agent artifacts в Git заказчика.
 
 Ни один sidecar script не должен писать в customer-code repositories. Эта граница проверяется snapshot/verify gate до commit.
 
@@ -76,6 +77,7 @@ node reusable-agent-system-toolkit/scripts/bootstrap.js status .
 ```bash
 node reusable-agent-system-toolkit/tests/run-tests.js
 node reusable-agent-system-toolkit/tests/run-sidecar-tests.js
+node reusable-agent-system-toolkit/tests/run-enterprise-tests.js
 ```
 
 Первый запуск toolkit в новом проекте должен быть full project research-code-review: агент изучает стек, архитектуру, data flow, зависимости, security/privacy, performance/resource leaks, testing/CI, critical flows и risk zones, затем создает полный русскоязычный отчет, risk register, refactor plan и smoke checklist. Быстрый обзор стека не считается успешным bootstrap.
@@ -90,18 +92,17 @@ Research должен идти по воспроизводимому алгор�
 
 Перед research bootstrap запускает install wizard:
 
-- спрашивает путь до `.env` для Jira, Confluence, Git/GitLab и MCP access;
-- объясняет, что `.env` нужен для воспроизводимых helper scripts;
+- спрашивает путь до `.env` для Jira, Confluence, GitLab и Figma/MCP access;
+- объясняет, что `.env` нужен только локальному integration runtime;
 - не печатает и не копирует secret values в docs/skills;
-- создает `.tmp/integration-env.sh`, `.tmp/jira-rest.sh`, `.tmp/confluence-rest.sh` из toolkit templates;
-- выполняет read-only probes;
-- если auth format не подошел, на этапе установки может попробовать auth modes `as-is`, `bearer`, `basic`;
-- после successful probe записывает winning auth mode в `.tmp/integration-env.sh`, docs и access-policy skills;
+- в sidecar режиме создаёт ignored `.local/integrations.json`, рендерит `bin/enterprise-mcp.js`, устанавливает MCP через `codex mcp add` и выполняет read-only probes всех четырёх систем;
+- в project-local режиме сохраняется helper-script flow через `.tmp/`;
+- не перебирает transport/auth modes во время обычной работы: режим задаётся env contract и после ошибки применяется fail-fast;
 - при ошибке говорит точную причину: неверный путь, отсутствующая переменная, протухший токен, DNS/network/auth/permission problem или unexpected response.
 
 Только после того, как enterprise/MCP setup завершился статусом `pass` или `skipped`, install wizard спрашивает, запускать ли deep scan. Агент обязан предупредить, что глубокое сканирование может занять время и потратить токены. Если пользователь выбирает пропуск, агент обязан предупредить: без deep scan не будет полноценной RAG базы, карты проекта, risk register и refactor plan, а скилы будут менее конкретными и более общими. Такой режим помечается как `degraded install`.
 
-Если в скопированном toolkit нет `templates/enterprise-scripts/integration-env.template.sh`, `jira-rest.template.sh` или `confluence-rest.template.sh`, это stale/incomplete toolkit copy. Агент должен остановиться, перечислить missing files и попросить обновить toolkit, а не сочинять helper scripts вручную.
+Если в sidecar toolkit нет `templates/workspace/enterprise-mcp.template.js` или `templates/workspace/agentctl.template.js`, это stale/incomplete toolkit copy. Для project-local helper mode аналогично обязательны `templates/enterprise-scripts/*`. Агент должен остановиться и попросить обновить toolkit.
 
 В конце project-local установки bootstrap обязан добавить `reusable-agent-system-toolkit/` в `.gitignore` целевого проекта. В sidecar режиме это правило не применяется: toolkit и agent-system являются отдельными внутренними репозиториями, а customer-code репозитории не изменяются вообще.
 

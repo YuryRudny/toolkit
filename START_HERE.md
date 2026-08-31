@@ -12,7 +12,7 @@ Customer repositories используй только для чтения.
 До research создай source snapshot, после генерации выполни workspace verify и commit plan.
 ```
 
-Для ежедневной работы разработчик один раз выполняет `node bsg-agent-system/bin/agentctl.js install`, а в начале сессии — `node bsg-agent-system/bin/agentctl.js sync`. Доступ идёт через SSH remote из `workspace.json`.
+Для ежедневной работы разработчик один раз выполняет `node bsg-agent-system/bin/agentctl.js install`, затем `node bsg-agent-system/bin/agentctl.js integrations configure /path/to/.env`, а в начале сессии — `node bsg-agent-system/bin/agentctl.js sync`. Код тянется по SSH, enterprise context — через локальный read-only MCP с токенами только из env пользователя.
 
 ## Project-local repository
 

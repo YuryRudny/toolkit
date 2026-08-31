@@ -49,6 +49,15 @@ install wizard -> enterprise env/helpers/probes -> scan decision -> rules merge 
 
 Обязательные действия, если пользователь дал env path:
 
+- если это sidecar workspace с `workspace.json.integrations`:
+  - проверить `templates/workspace/agentctl.template.js` и `enterprise-mcp.template.js`;
+  - выполнить `render-workspace-runtime`;
+  - убедиться, что `.local/` игнорируется Git;
+  - запустить `node bin/agentctl.js integrations configure <env-path>`;
+  - принять phase только если Jira, Confluence, минимум один GitLab и Figma probes прошли;
+  - не записывать env path или token values в tracked artifacts;
+- следующие `.tmp` helper steps применяются только к project-local mode без sidecar integration runtime;
+
 - создать `.tmp/`;
 - проверить, что в toolkit существуют:
   - `templates/enterprise-scripts/integration-env.template.sh`;

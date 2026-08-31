@@ -6,13 +6,13 @@ Sidecar workspace определяется наличием `workspace.json` в 
 
 1. Запускай только локальный bootstrap файл из корня целевого проекта: `./reusable-agent-system-toolkit/skills/project-agent-bootstrap/SKILL.md`. Не ищи bootstrap в `~/.codex`, plugins, `node_modules` или соседних проектах; если локального файла нет, остановись без fallback skills.
 2. Следуй `bootstrap-strict-algorithm`: фазы нельзя менять местами.
-3. Install wizard спрашивает путь до `.env` для Jira/Confluence/Git/GitLab/MCP access, объясняет зачем он нужен и что secret values не будут печататься или копироваться.
-4. Если enterprise setup включен, создай `.tmp/integration-env.sh`, `.tmp/jira-rest.sh`, `.tmp/confluence-rest.sh` из `templates/enterprise-scripts/`, подставь env path и выполни read-only probes. Если auth format не подошел, во время setup можно попробовать `as-is`, `bearer`, `basic`. После success запиши winning auth mode. Если probe не работает, остановись с точным blocker или продолжай только после явного `пропустить`.
+3. Install wizard спрашивает путь до `.env` для Jira/Confluence/GitLab/Figma/MCP access, объясняет зачем он нужен и что secret values не будут печататься или копироваться.
+4. В sidecar режиме отрендери `bin/enterprise-mcp.js` и запусти `agentctl integrations configure <env-path>`: команда создаёт ignored local config, устанавливает MCP и выполняет read-only probes. В project-local режиме используй `.tmp/integration-env.sh`, `.tmp/jira-rest.sh`, `.tmp/confluence-rest.sh`. Если probe не работает, остановись с точным blocker или продолжай только после явного `пропустить`.
 5. Только после enterprise setup `pass` или `skipped` install wizard спрашивает, запускать ли deep scan. Он обязан предупредить, что scan может занять время и потратить токены.
 6. Если пользователь пропускает deep scan, предупреди о последствиях: нет полноценной RAG базы, project map, risk register, refactor plan и concrete stack-specific skills. Продолжай только как `degraded install`.
 7. Если deep scan разрешен, используй единый `scripts/bootstrap.js`: создай canonical `project-model.json`, topology-based research task graph, заполни evidence/forms, собери RAG/docs, затем выполни capability-based seed selection, structured skill inputs, seed extraction, full skill render, registry-based operational render, вычисляемый quality report и validation result.
 8. Если deep scan пропущен, создай только minimal docs/skills с marker `Degraded install: deep scan skipped by user`; не называй RAG/project map/refactor plan готовыми.
-9. В project-local режиме добавь `reusable-agent-system-toolkit/` в `.gitignore` целевого проекта. В sidecar режиме вместо этого выполни `workspace-verify`, сгенерируй `bin/agentctl.js` и проверь `commit-plan`; customer repositories менять запрещено.
+9. В project-local режиме добавь `reusable-agent-system-toolkit/` в `.gitignore` целевого проекта. В sidecar режиме вместо этого выполни `workspace-verify`, сгенерируй `bin/agentctl.js` и `bin/enterprise-mcp.js`, проверь `commit-plan`; customer repositories менять запрещено.
 
 ## Не цели
 

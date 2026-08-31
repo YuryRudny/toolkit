@@ -53,7 +53,7 @@ try {
   const artifactRemote = "ssh://git@git.example.test:9111/team/agent-system.git";
   const apiRemote = "https://customer.example.test/group/api-service.git";
   const uiRemote = "https://customer.example.test/group/web-client.git";
-  initRepo(artifactRoot, artifactRemote, { "README.md": "# Team agent system\n" });
+  initRepo(artifactRoot, artifactRemote, { "README.md": "# Team agent system\n", ".gitignore": ".local/\n" });
   initRepo(apiRoot, apiRemote, {
     "pom.xml": "<project><artifactId>api-service</artifactId></project>\n",
     "src/main/java/example/Application.java": "class Application {}\n",
@@ -70,6 +70,11 @@ try {
     artifactRepository: { id: "team-agent-system", remote: artifactRemote },
     toolkit: { path: "../toolkit", remote: "git@example.test:team/toolkit.git" },
     localIntegration: { workspaceRoot: "..", agentsFile: "AGENTS.md", skillsDirectory: ".agents/skills" },
+    integrations: {
+      mcpServerName: "fixture-enterprise",
+      localConfig: ".local/integrations.json",
+      requiredServices: ["jira", "confluence", "gitlab", "figma"],
+    },
     repositories: [
       { id: "api-service", role: "customer-code", path: "../api-service", remote: apiRemote, defaultBranch: "main" },
       { id: "web-client", role: "customer-code", path: "../web-client", remote: uiRemote, defaultBranch: "main" },
@@ -88,11 +93,19 @@ try {
   assert.equal(model.mode, "sidecar-workspace");
   assert.equal(model.projectRoot, "repo://team-agent-system");
   assert.deepEqual(model.workspace.repositories.map((repo) => repo.id), ["api-service", "web-client"]);
+  assert.equal(model.integrations.enterprise.mcpServerName, "fixture-enterprise");
+  assert.deepEqual(model.integrations.enterprise.requiredServices, ["jira", "confluence", "gitlab", "figma"]);
+  assert.equal(model.integrations.enterprise.secretValuesStored, false);
   assert(model.modules.some((item) => item.path.startsWith("repo://api-service/")));
   assert(model.entryPoints.some((item) => item.path.startsWith("repo://web-client/")));
   assert(!JSON.stringify(model).includes(workspaceRoot));
   assert.equal(command("git", ["status", "--porcelain=v1", "-uall"], apiRoot).stdout, baselineApiStatus);
   assert.equal(command("git", ["status", "--porcelain=v1", "-uall"], uiRoot).stdout, baselineUiStatus);
+
+  runToolkit("render-operational-skills.js", [artifactRoot]);
+  assert(fs.existsSync(path.join(artifactRoot, "codex-skills/skills/enterprise-context/SKILL.md")));
+  assert(fs.existsSync(path.join(artifactRoot, "codex-skills/references/enterprise-context.md")));
+  assert(fs.readFileSync(path.join(artifactRoot, "codex-skills/skills/workflow-router/SKILL.md"), "utf8").includes("Enterprise Context Mode"));
 
   runToolkit("create-skill-registry.js", [artifactRoot]);
   const registry = readArtifactJson("docs/agent-system/skill-registry.json");
@@ -104,12 +117,51 @@ try {
 
   runToolkit("render-workspace-runtime.js", [artifactRoot]);
   const agentctl = path.join(artifactRoot, "bin", "agentctl.js");
+  const enterpriseMcp = path.join(artifactRoot, "bin", "enterprise-mcp.js");
+  assert(fs.existsSync(enterpriseMcp));
+  assert(fs.readFileSync(enterpriseMcp, "utf8").includes('const SERVER_NAME = "fixture-enterprise";'));
   command(process.execPath, [agentctl, "install"], artifactRoot);
   assert.equal(fs.realpathSync(path.join(workspaceRoot, "AGENTS.md")), fs.realpathSync(path.join(artifactRoot, "AGENTS.md")));
   assert.equal(fs.realpathSync(path.join(workspaceRoot, ".agents", "skills")), fs.realpathSync(path.join(artifactRoot, "codex-skills", "skills")));
   command(process.execPath, [agentctl, "doctor"], artifactRoot);
   const status = JSON.parse(command(process.execPath, [agentctl, "status"], artifactRoot).stdout);
   assert.equal(status.knowledgeStatus, "current");
+
+  const envFile = path.join(workspaceRoot, "developer.env");
+  write(workspaceRoot, "developer.env", [
+    "JIRA_BASE_URL=https://jira.example.test",
+    "JIRA_TOKEN=jira-secret",
+    "CONFLUENCE_BASE_URL=https://confluence.example.test",
+    "CONFLUENCE_TOKEN=confluence-secret",
+    "FIGMA_TOKEN=figma-secret",
+    "GITLAB_BASE_URL=https://git.example.test",
+    "GITLAB_TOKEN=gitlab-secret",
+    "",
+  ].join("\n"));
+  command(process.execPath, [agentctl, "integrations", "configure", envFile, "--skip-mcp-install", "--skip-probe"], artifactRoot);
+  const localIntegration = readArtifactJson(".local/integrations.json");
+  assert.equal(localIntegration.envFile, envFile);
+  assert(!JSON.stringify(localIntegration).includes("jira-secret"));
+  const integrationStatus = JSON.parse(command(process.execPath, [agentctl, "integrations", "status"], artifactRoot).stdout);
+  assert(integrationStatus.services.some((item) => item.kind === "figma" && item.configured));
+  const fakeCodex = path.join(workspaceRoot, "fake-codex.js");
+  const fakeCodexLog = path.join(workspaceRoot, "fake-codex.log");
+  write(workspaceRoot, "fake-codex.js", `#!/usr/bin/env node\nconst fs = require("fs");\nfs.appendFileSync(process.env.FAKE_CODEX_LOG, JSON.stringify(process.argv.slice(2)) + "\\n");\nprocess.exit(process.argv[3] === "get" ? 1 : 0);\n`);
+  fs.chmodSync(fakeCodex, 0o755);
+  const installMcp = spawnSync(process.execPath, [agentctl, "integrations", "install-mcp"], {
+    cwd: artifactRoot,
+    encoding: "utf8",
+    env: { ...process.env, BSG_CODEX_BIN: fakeCodex, FAKE_CODEX_LOG: fakeCodexLog },
+  });
+  if (installMcp.status !== 0) throw new Error(`MCP install fixture failed\n${installMcp.stdout}\n${installMcp.stderr}`);
+  const codexCalls = fs.readFileSync(fakeCodexLog, "utf8").trim().split(/\r?\n/).map(JSON.parse);
+  const addCall = codexCalls.find((args) => args[0] === "mcp" && args[1] === "add");
+  assert(addCall);
+  assert(addCall.includes(fs.realpathSync(enterpriseMcp)), JSON.stringify(addCall));
+  assert(addCall.includes(fs.realpathSync(path.join(artifactRoot, ".local", "integrations.json"))), JSON.stringify(addCall));
+  assert(!JSON.stringify(addCall).includes("jira-secret"));
+  assert.equal(command("git", ["status", "--porcelain=v1", "-uall"], apiRoot).stdout, baselineApiStatus);
+  assert.equal(command("git", ["status", "--porcelain=v1", "-uall"], uiRoot).stdout, baselineUiStatus);
 
   write(apiRoot, "AGENTS.md", "forbidden\n");
   const plan = command(process.execPath, [agentctl, "commit-plan"], artifactRoot, 1);

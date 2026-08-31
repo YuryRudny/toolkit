@@ -12,7 +12,7 @@ const entryTemplatePath = path.join(toolkitRoot, "templates", "project-rules", "
 const entryStart = "<!-- reusable-agent-system-toolkit:start -->";
 const entryEnd = "<!-- reusable-agent-system-toolkit:end -->";
 
-const templates = [
+const baseTemplates = [
   ["project-authority", "project-authority.template.md"],
   ["research-audit", "research-audit.template.md"],
   ["pre-change-checklist", "pre-change-checklist.template.md"],
@@ -40,6 +40,13 @@ function writeSkill(name, text) {
   return path.relative(root, outPath);
 }
 
+function writeReference(name, text) {
+  const outPath = path.join(root, "codex-skills", "references", name);
+  ensureDir(path.dirname(outPath));
+  fs.writeFileSync(outPath, text);
+  return path.relative(root, outPath);
+}
+
 function renderProjectEntry() {
   if (!fs.existsSync(entryTemplatePath)) {
     console.error(`Missing project entry template: ${path.relative(toolkitRoot, entryTemplatePath)}`);
@@ -48,7 +55,7 @@ function renderProjectEntry() {
 
   const model = readJson("docs/agent-system/project-model.json") || {};
   const sidecarRules = model.mode === "sidecar-workspace"
-    ? `\n\n## Sidecar Preflight\n\n- До чтения customer source и первого Git action выполни \`node bsg-agent-system/bin/agentctl.js sync\` из workspace root. Это обычный \`git pull --ff-only\` внутреннего репозитория по SSH.\n- Затем выполни \`node bsg-agent-system/bin/agentctl.js status\`. При \`knowledgeStatus: stale\` сначала сделай targeted update затронутой RAG области.\n- Код коммить только в его customer repository; docs/RAG/skills — только в bsg-agent-system. Перед commit/push выполни \`node bsg-agent-system/bin/agentctl.js commit-plan\`.\n- Не создавай AGENTS.md, .agents, .codex, codex-skills, docs/agent-system или toolkit paths внутри customer-code repositories.`
+    ? `\n\n## Sidecar Preflight\n\n- До чтения customer source и первого Git action выполни \`node bsg-agent-system/bin/agentctl.js sync\` из workspace root. Это обычный \`git pull --ff-only\` внутреннего репозитория по SSH.\n- Затем выполни \`node bsg-agent-system/bin/agentctl.js status\`. При \`knowledgeStatus: stale\` сначала сделай targeted update затронутой RAG области.\n- Для Jira key или Jira/Confluence/Figma/GitLab URL загрузи \`enterprise-context\` и выполни \`node bsg-agent-system/bin/agentctl.js integrations status\` до внешнего запроса.\n- Код коммить только в его customer repository; docs/RAG/skills — только в bsg-agent-system. Перед commit/push выполни \`node bsg-agent-system/bin/agentctl.js commit-plan\`.\n- Не создавай AGENTS.md, .agents, .codex, codex-skills, docs/agent-system или toolkit paths внутри customer-code repositories.`
     : "";
   const body = `${fs.readFileSync(entryTemplatePath, "utf8")
     .replaceAll("<PROJECT_SKILLS_PATH>", "codex-skills/skills")
@@ -74,6 +81,11 @@ function renderProjectEntry() {
   return "AGENTS.md (merged with existing rules)";
 }
 
+const workspaceConfig = readJson("workspace.json") || {};
+const enterpriseEnabled = Boolean(workspaceConfig.integrations);
+const templates = enterpriseEnabled
+  ? [...baseTemplates, ["enterprise-context", "enterprise-context.template.md"]]
+  : baseTemplates;
 const rendered = [];
 for (const [skillName, templateName] of templates) {
   const templatePath = path.join(toolkitRoot, "templates", "skills", templateName);
@@ -98,6 +110,15 @@ for (const [skillName, templateName] of templates) {
   rendered.push(writeSkill(skillName, text));
 }
 
+if (enterpriseEnabled) {
+  const referenceTemplate = path.join(toolkitRoot, "templates", "references", "enterprise-context.template.md");
+  if (!fs.existsSync(referenceTemplate)) {
+    console.error(`Missing enterprise reference template: ${path.relative(toolkitRoot, referenceTemplate)}`);
+    process.exit(1);
+  }
+  rendered.push(writeReference("enterprise-context.md", fs.readFileSync(referenceTemplate, "utf8")));
+}
+
 const planned = readJson("docs/agent-system/skill-inputs/index.json")?.targetSkills || [];
 const active = fs.existsSync(outRoot)
   ? fs.readdirSync(outRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name)
@@ -112,6 +133,7 @@ const modes = [
   ["Debugging", "ошибка, падение, flaky behavior, regression", select("project-authority", "debugging-and-error-recovery", "review-checklist")],
   ["Refactor", "рефактор, architecture debt, следующий slice", select("project-authority", "refactor-engineering", "pre-change-checklist", "review-checklist")],
   ["Merge/Publish", "commit, push, merge, MR", select("project-authority", "git-remote-flow", "review-checklist")],
+  ...(enterpriseEnabled ? [["Enterprise Context", "Jira key, Confluence/Figma/GitLab URL, external task context", select("project-authority", "enterprise-context")]] : []),
 ];
 
 const modeSections = modes.map(([title, triggers, skills]) => `### ${title} Mode\n\nТриггеры: ${triggers}.\n\nОбязательные skills: ${skills.map((name) => `\`${name}\``).join(", ") || "нет"}.`).join("\n\n");
@@ -138,7 +160,7 @@ ${modeSections}
 ## Инварианты
 
 - Не называй и не загружай skill, которого нет в registry со status \`active\`.
-- Для Jira/Confluence используй access-policy skill только если он активен и probe status подтверждён.
+- Для Jira/Confluence/Figma/GitLab используй \`enterprise-context\` только если он активен; runtime status/probe обязан подтвердить локальную конфигурацию.
 - При устаревшем project-model выполняй targeted discovery до изменения.
 - Research обновляет model/RAG, если обнаружены новые modules, flows, findings или gaps.
 `;

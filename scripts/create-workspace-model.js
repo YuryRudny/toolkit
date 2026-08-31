@@ -161,6 +161,15 @@ const model = {
     git: { remote: workspace.artifact.actualRemote, branch: git(workspace.artifactRoot, ["branch", "--show-current"], "") },
     sources: repositories.map((repo) => ({ id: repo.id, remote: repo.remote, branch: repo.branch, head: repo.head })),
     ...(previous?.integrations || {}),
+    enterprise: workspace.manifest.integrations
+      ? {
+          enabled: true,
+          mcpServerName: workspace.manifest.integrations.mcpServerName || `${workspace.manifest.workspaceId}-enterprise`,
+          requiredServices: workspace.manifest.integrations.requiredServices || ["jira", "confluence", "gitlab", "figma"],
+          credentialSource: "machine-local-env",
+          secretValuesStored: false,
+        }
+      : { enabled: false },
   },
   research: previous?.research
     ? { ...previous.research, stale: previous.fingerprint !== fingerprint }

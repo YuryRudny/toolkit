@@ -7,6 +7,7 @@ const { execFileSync, spawnSync } = require("child_process");
 const artifactRoot = path.resolve(__dirname, "..");
 const manifestPath = path.join(artifactRoot, "workspace.json");
 const forbiddenAgentArtifact = /(^|\/)(AGENTS(?:\.override)?\.md|\.agents|\.codex|codex-skills|docs\/agent-system|reusable-agent-system-toolkit)(\/|$)/;
+const enterpriseServerPath = path.join(artifactRoot, "bin", "enterprise-mcp.js");
 
 function fail(message) {
   console.error(message);
@@ -79,6 +80,137 @@ function install() {
   const agentsResult = ensureLink(agentsFile, path.join(artifactRoot, "AGENTS.md"));
   const skillsResult = ensureLink(skillsDirectory, path.join(artifactRoot, "codex-skills", "skills"));
   console.log(`Local integration ready: AGENTS.md ${agentsResult}; skills ${skillsResult}`);
+  if (workspace.manifest.integrations) {
+    const localConfigPath = integrationConfigPath(workspace.manifest);
+    if (!fs.existsSync(localConfigPath)) {
+      console.log("Enterprise integrations are not configured on this machine. Run: agentctl.js integrations configure /absolute/path/to/.env");
+    }
+  }
+}
+
+function integrationSettings(manifest) {
+  const settings = manifest.integrations || {};
+  const mcpServerName = settings.mcpServerName || `${manifest.workspaceId}-enterprise`;
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(mcpServerName)) fail(`Invalid integrations.mcpServerName: ${mcpServerName}`);
+  return {
+    mcpServerName,
+    localConfig: settings.localConfig || ".local/integrations.json",
+    requiredServices: settings.requiredServices || ["jira", "confluence", "gitlab", "figma"],
+  };
+}
+
+function integrationConfigPath(manifest) {
+  const output = path.resolve(artifactRoot, integrationSettings(manifest).localConfig);
+  if (output !== artifactRoot && !output.startsWith(`${artifactRoot}${path.sep}`)) {
+    fail("integrations.localConfig must stay inside the agent-system repository.");
+  }
+  return output;
+}
+
+function runEnterprise(manifest, args, options = {}) {
+  if (!fs.existsSync(enterpriseServerPath)) fail(`Missing enterprise MCP runtime: ${enterpriseServerPath}`);
+  const localConfigPath = integrationConfigPath(manifest);
+  if (!fs.existsSync(localConfigPath)) {
+    fail("Enterprise integrations are not configured. Run integrations configure with the user-provided env path.");
+  }
+  const result = spawnSync(process.execPath, [enterpriseServerPath, "--config", localConfigPath, ...args], {
+    cwd: artifactRoot,
+    encoding: "utf8",
+    stdio: options.capture ? ["ignore", "pipe", "pipe"] : "inherit",
+  });
+  if (options.capture) return result;
+  if (result.status !== 0) process.exit(result.status || 1);
+  return result;
+}
+
+function parseChildJson(result, action) {
+  if (result.status !== 0) fail(`${action} failed: ${String(result.stderr || result.stdout || "unknown error").trim()}`);
+  try { return JSON.parse(result.stdout); }
+  catch { fail(`${action} returned invalid JSON.`); }
+}
+
+function installEnterpriseMcp(manifest) {
+  const settings = integrationSettings(manifest);
+  const localConfigPath = integrationConfigPath(manifest);
+  const codexBin = process.env.BSG_CODEX_BIN || "codex";
+  const existing = spawnSync(codexBin, ["mcp", "get", settings.mcpServerName, "--json"], { encoding: "utf8" });
+  if (existing.error?.code === "ENOENT") fail("Codex CLI is not available; cannot install the enterprise MCP server.");
+  if (existing.status === 0) {
+    const removed = spawnSync(codexBin, ["mcp", "remove", settings.mcpServerName], { encoding: "utf8", stdio: "inherit" });
+    if (removed.status !== 0) fail(`Cannot replace existing MCP server ${settings.mcpServerName}.`);
+  }
+  const added = spawnSync(codexBin, [
+    "mcp", "add", settings.mcpServerName, "--",
+    process.execPath, enterpriseServerPath, "--config", localConfigPath,
+  ], { encoding: "utf8", stdio: "inherit" });
+  if (added.status !== 0) fail(`Cannot install MCP server ${settings.mcpServerName}.`);
+  console.log(`Codex MCP server installed: ${settings.mcpServerName}`);
+}
+
+function configureIntegrations() {
+  const workspace = resolveWorkspace();
+  const envArgument = process.argv[4];
+  if (!envArgument || envArgument.startsWith("--")) {
+    fail("Usage: agentctl.js integrations configure /absolute/path/to/.env [--skip-mcp-install] [--skip-probe]");
+  }
+  const envFile = path.resolve(envArgument);
+  let stat;
+  try { stat = fs.statSync(envFile); }
+  catch (error) { fail(`Cannot read env file: ${error.message}`); }
+  if (!stat.isFile()) fail(`Env path is not a regular file: ${envFile}`);
+  fs.accessSync(envFile, fs.constants.R_OK);
+  if ((stat.mode & 0o077) !== 0) {
+    console.error("Warning: env file is readable by group or other users; chmod 600 is recommended.");
+  }
+  const localConfigPath = integrationConfigPath(workspace.manifest);
+  fs.mkdirSync(path.dirname(localConfigPath), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(localConfigPath, `${JSON.stringify({
+    schemaVersion: 1,
+    workspaceId: workspace.manifest.workspaceId,
+    envFile,
+    configuredAt: new Date().toISOString(),
+  }, null, 2)}\n`, { mode: 0o600 });
+  fs.chmodSync(localConfigPath, 0o600);
+
+  const statusResult = runEnterprise(workspace.manifest, ["--status"], { capture: true });
+  const status = parseChildJson(statusResult, "Enterprise configuration validation");
+  const required = integrationSettings(workspace.manifest).requiredServices;
+  const missing = required.filter((kind) => !status.services.some((item) => item.kind === kind && item.configured));
+  if (missing.length) {
+    fail(`Env file is missing required integration configuration: ${missing.join(", ")}. Secret values were not printed.`);
+  }
+  console.log(`Local enterprise config created: ${localConfigPath} (secret values remain only in ${envFile})`);
+  if (!process.argv.includes("--skip-mcp-install")) installEnterpriseMcp(workspace.manifest);
+  if (!process.argv.includes("--skip-probe")) runEnterprise(workspace.manifest, ["--doctor"]);
+}
+
+function integrationStatus() {
+  const workspace = resolveWorkspace();
+  runEnterprise(workspace.manifest, ["--status"]);
+}
+
+function integrationDoctor() {
+  const workspace = resolveWorkspace();
+  runEnterprise(workspace.manifest, ["--doctor"]);
+}
+
+function integrationResolve() {
+  const workspace = resolveWorkspace();
+  const issueKey = process.argv[4];
+  if (!issueKey) fail("Usage: agentctl.js integrations resolve JIRA-123");
+  runEnterprise(workspace.manifest, ["--resolve-issue", issueKey]);
+}
+
+function integrations() {
+  const workspace = resolveWorkspace();
+  if (!workspace.manifest.integrations) fail("Enterprise integrations are not enabled in workspace.json.");
+  const action = process.argv[3] || "status";
+  if (action === "configure") configureIntegrations();
+  else if (action === "status") integrationStatus();
+  else if (action === "doctor") integrationDoctor();
+  else if (action === "install-mcp") installEnterpriseMcp(workspace.manifest);
+  else if (action === "resolve") integrationResolve();
+  else fail("Usage: agentctl.js integrations <configure|status|doctor|install-mcp|resolve>");
 }
 
 function doctor() {
@@ -162,4 +294,5 @@ else if (command === "doctor") doctor();
 else if (command === "sync") sync();
 else if (command === "status") status();
 else if (command === "commit-plan") commitPlan();
-else fail("Usage: agentctl.js <install|doctor|sync|status|commit-plan>");
+else if (command === "integrations") integrations();
+else fail("Usage: agentctl.js <install|doctor|sync|status|commit-plan|integrations>");

@@ -42,6 +42,11 @@ requirePattern("templates/enterprise-scripts/integration-env.template.sh", /mkte
 forbidPattern("templates/enterprise-scripts/integration-env.template.sh", /-H "Authorization: \$auth_header"/, "secret is exposed in curl argv");
 forbidPattern("templates/enterprise-scripts/jira-rest.template.sh", /URL="\$TARGET"/, "arbitrary target URL bypasses origin validation");
 forbidPattern("templates/enterprise-scripts/confluence-rest.template.sh", /URL="\$TARGET"/, "arbitrary target URL bypasses origin validation");
+requirePattern("templates/workspace/enterprise-mcp.template.js", /resolveServiceUrl/, "enterprise MCP lacks configured-origin URL enforcement");
+requirePattern("templates/workspace/enterprise-mcp.template.js", /redirect:\s*"manual"/, "enterprise MCP can follow credential-bearing redirects");
+requirePattern("templates/workspace/enterprise-mcp.template.js", /sanitizeMessage/, "enterprise MCP lacks secret-safe error handling");
+requirePattern("templates/workspace/enterprise-mcp.template.js", /trustBoundary/, "enterprise MCP does not mark external content as untrusted");
+forbidPattern("templates/workspace/enterprise-mcp.template.js", /console\.log\([^\n]*(?:token|headers|env)\b/i, "enterprise MCP can print secret-bearing runtime state");
 
 requirePattern("scripts/render-skills.js", /resolveInside/, "renderer does not enforce output containment");
 requirePattern("scripts/render-skills.js", /assertSafeReference/, "renderer does not validate reference paths");
@@ -83,7 +88,7 @@ const trackedText = [
   ...walk(path.join(root, "references")),
   ...walk(path.join(root, "skills")),
   ...walk(path.join(root, "templates")),
-].filter((file) => /\.(?:md|sh|json)$/i.test(file));
+].filter((file) => /\.(?:md|sh|js|json)$/i.test(file));
 for (const file of trackedText) {
   const source = fs.readFileSync(file, "utf8");
   if (/\/Users\/[A-Za-z0-9._-]+\//.test(source)) {

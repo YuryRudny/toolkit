@@ -51,6 +51,7 @@ function overlap(left, right) {
 }
 
 const model = readJson("docs/agent-system/project-model.json") || {};
+const workspace = readJson("workspace.json") || {};
 const tasks = readJson("docs/agent-system/research-workspace/research-tasks.json")?.tasks || [];
 const registry = readJson("docs/agent-system/skill-registry.json")?.skills || [];
 const evidenceLog = readText("docs/agent-system/research-workspace/evidence-log.md");
@@ -124,11 +125,18 @@ const referenceScore = clamp(ratio(references, exists) * 8 + (references.length 
 const englishMarkers = roleSkillTexts.join("\n").match(/\b(Required Reads|Stop Conditions|Fix root cause|Read RAG first|Demand local fix)\b/gi) || [];
 const languageScore = clamp(10 - Math.min(englishMarkers.length, 10));
 
+const sidecarEnterpriseReady = Boolean(
+  workspace.integrations
+  && exists("bin/enterprise-mcp.js")
+  && exists("codex-skills/skills/enterprise-context/SKILL.md")
+  && exists("codex-skills/references/enterprise-context.md")
+);
+
 const enterpriseScore = clamp(
   (exists("docs/agent-system/existing-rules-merge.md") ? 4 : 0)
   + (exists("docs/agent-system/enterprise-integrations.md") ? 3 : 0)
   + (model.integrations?.git?.remote ? 1 : 0)
-  + (exists(".tmp/integration-env.sh") || readText("docs/agent-system/enterprise-integrations.md").includes("skipped") ? 2 : 0),
+  + (exists(".tmp/integration-env.sh") || sidecarEnterpriseReady || readText("docs/agent-system/enterprise-integrations.md").includes("skipped") ? 2 : 0),
 );
 
 const activeNames = new Set(registry.filter((skill) => skill.status === "active").map((skill) => skill.name));
@@ -158,7 +166,7 @@ const scores = [
   ["Skill senior quality", seniorScore, "required operational sections + project risk IDs"],
   ["Operational references", referenceScore, "registered references + duplication check"],
   ["Language/runtime clarity", languageScore, "runtime English marker scan"],
-  ["Existing rules/enterprise hygiene", enterpriseScore, "merge docs + enterprise state + git/helper evidence"],
+  ["Existing rules/enterprise hygiene", enterpriseScore, "merge docs + enterprise state + Git/helper or sidecar MCP evidence"],
   ["Re-run safety", rerunScore, "model + registry + state + router consistency + freshness"],
 ];
 const fullScore = clamp(scores.reduce((sum, [, score]) => sum + score, 0) / scores.length);
