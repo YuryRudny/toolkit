@@ -402,6 +402,147 @@ function status() {
   }, null, 2));
 }
 
+function verificationEvidencePath(manifest) {
+  const configured = manifest.verification?.evidenceFile || ".local/task-verification.json";
+  const output = path.resolve(artifactRoot, configured);
+  if (output !== artifactRoot && !output.startsWith(`${artifactRoot}${path.sep}`)) {
+    fail("verification.evidenceFile must stay inside the agent-system repository.");
+  }
+  return output;
+}
+
+function verificationStep(raw, stage, repositoryId) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    fail(`${repositoryId} ${stage} entry must be an object.`);
+  }
+  const id = String(raw.id || "").trim();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
+    fail(`${repositoryId} ${stage} id must use lowercase kebab-case.`);
+  }
+  if (!Array.isArray(raw.command) || !raw.command.length || raw.command.some((item) => typeof item !== "string" || !item)) {
+    fail(`${repositoryId} ${stage} ${id} must define a non-empty string command array.`);
+  }
+  const timeoutMs = Number(raw.timeoutMs || 900000);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3600000) {
+    fail(`${repositoryId} ${stage} ${id} timeoutMs must be between 1000 and 3600000.`);
+  }
+  return { id, command: raw.command, timeoutMs };
+}
+
+function verificationDescriptor(workspace, repository) {
+  const isArtifact = repository.id === workspace.manifest.artifactRepository.id;
+  return {
+    id: repository.id,
+    root: isArtifact ? artifactRoot : repository.root,
+    verification: repository.verification || null,
+  };
+}
+
+function verificationTargets(workspace) {
+  const all = [
+    verificationDescriptor(workspace, workspace.manifest.artifactRepository),
+    ...workspace.repositories.map((repo) => verificationDescriptor(workspace, repo)),
+  ];
+  const args = process.argv.slice(3);
+  if (args.includes("--all") && args.length !== 1) fail("Use either --all or explicit repository ids.");
+  if (args.includes("--all")) return all;
+  if (args.length) {
+    const byId = new Map(all.map((repo) => [repo.id, repo]));
+    return args.map((id) => {
+      const repo = byId.get(id);
+      if (!repo) fail(`Unknown verification repository: ${id}`);
+      return repo;
+    });
+  }
+  const changed = all.filter((repo) => Boolean(git(repo.root, ["status", "--porcelain=v1", "-uall"], "")));
+  if (!changed.length) fail("No changed repositories. Pass an explicit repository id or --all.");
+  return changed;
+}
+
+function runVerificationStep(repository, stage, step) {
+  const startedAt = Date.now();
+  console.log(`[${repository.id}] ${stage}/${step.id}: ${step.command.join(" ")}`);
+  const result = spawnSync(step.command[0], step.command.slice(1), {
+    cwd: repository.root,
+    encoding: "utf8",
+    stdio: "inherit",
+    timeout: step.timeoutMs,
+    env: { ...process.env, CI: process.env.CI || "true" },
+  });
+  const durationMs = Date.now() - startedAt;
+  if (result.error || result.status !== 0) {
+    return {
+      id: step.id,
+      stage,
+      status: "failed",
+      durationMs,
+      exitCode: result.status,
+      message: String(result.error?.message || `command exited with ${result.status}`).slice(0, 500),
+    };
+  }
+  return { id: step.id, stage, status: "passed", durationMs, exitCode: 0 };
+}
+
+function smoke() {
+  const workspace = resolveWorkspace();
+  const targets = verificationTargets(workspace);
+  const results = [];
+  for (const repository of targets) {
+    const profile = repository.verification;
+    if (profile?.notApplicableReason) {
+      results.push({
+        id: repository.id,
+        status: "not-applicable",
+        reason: String(profile.notApplicableReason),
+        head: git(repository.root, ["rev-parse", "HEAD"], ""),
+        checks: [],
+      });
+      continue;
+    }
+    const automatedTests = Array.isArray(profile?.automatedTests) ? profile.automatedTests : [];
+    const smokeTests = Array.isArray(profile?.smokeTests) ? profile.smokeTests : [];
+    const checks = [];
+    if (!automatedTests.length) {
+      checks.push({ id: "automated-tests", stage: "automated-test", status: "failed", message: "No automatedTests configured." });
+    }
+    if (!smokeTests.length) {
+      checks.push({ id: "smoke-tests", stage: "smoke", status: "failed", message: "No smokeTests configured." });
+    }
+    for (const raw of automatedTests) {
+      const step = verificationStep(raw, "automated-test", repository.id);
+      checks.push(runVerificationStep(repository, "automated-test", step));
+      if (checks.at(-1).status === "failed") break;
+    }
+    if (!checks.some((item) => item.status === "failed")) {
+      for (const raw of smokeTests) {
+        const step = verificationStep(raw, "smoke", repository.id);
+        checks.push(runVerificationStep(repository, "smoke", step));
+        if (checks.at(-1).status === "failed") break;
+      }
+    }
+    results.push({
+      id: repository.id,
+      status: checks.length > 0 && checks.every((item) => item.status === "passed") ? "passed" : "failed",
+      head: git(repository.root, ["rev-parse", "HEAD"], ""),
+      worktreeChanges: git(repository.root, ["status", "--porcelain=v1", "-uall"], "").split(/\r?\n/).filter(Boolean),
+      checks,
+    });
+  }
+  const payload = {
+    schemaVersion: 1,
+    workspaceId: workspace.manifest.workspaceId,
+    generatedAt: new Date().toISOString(),
+    status: results.every((item) => ["passed", "not-applicable"].includes(item.status)) ? "passed" : "failed",
+    results,
+  };
+  const evidencePath = verificationEvidencePath(workspace.manifest);
+  fs.mkdirSync(path.dirname(evidencePath), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(evidencePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  fs.chmodSync(evidencePath, 0o600);
+  console.log(JSON.stringify({ ...payload, evidenceFile: evidencePath }, null, 2));
+  if (payload.status !== "passed") process.exit(1);
+}
+
 function commitPlan() {
   const workspace = resolveWorkspace();
   const violations = [];
@@ -430,6 +571,7 @@ if (command === "install") install();
 else if (command === "doctor") doctor();
 else if (command === "sync") sync();
 else if (command === "status") status();
+else if (command === "smoke") smoke();
 else if (command === "commit-plan") commitPlan();
 else if (command === "integrations") integrations();
-else fail("Usage: agentctl.js <install|doctor|sync|status|commit-plan|integrations>");
+else fail("Usage: agentctl.js <install|doctor|sync|status|smoke|commit-plan|integrations>");

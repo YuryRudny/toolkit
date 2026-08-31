@@ -25,9 +25,12 @@ node ../reusable-agent-system-toolkit-source/scripts/bootstrap.js render-workspa
 node bin/agentctl.js install
 node bin/agentctl.js integrations configure /absolute/path/to/.env
 node bin/agentctl.js sync
+node bin/agentctl.js smoke <repository-id>
 ```
 
 `agentctl integrations configure` сохраняет только путь до env в ignored `.local/integrations.json`, устанавливает dependency-free STDIO MCP в пользовательский Codex config и выполняет read-only probes Jira, Confluence, GitLab и Figma. Значения токенов не копируются в Git или MCP config. `agentctl sync` делает только `git pull --ff-only` внутреннего agent-system по уже настроенному SSH и обновляет локальные ссылки. Customer repositories он не переключает и не обновляет. `agentctl status` сравнивает их HEAD с RAG snapshot, а `commit-plan` блокирует agent artifacts в Git заказчика.
+
+`agentctl smoke <repository-id>` является обязательным post-task gate для любого репозитория с file edits. Он запускает configured `automatedTests`, затем `smokeTests`, останавливается на первой ошибке и пишет локальный ignored evidence-файл. Отсутствующий automated test или smoke profile блокирует завершение задачи. Несколько repository ids разрешены для cross-repo задачи; `--all` предназначен для полного workspace audit.
 
 Для внутренних HTTPS с корпоративным CA env может задать `ENTERPRISE_CA_FILE=/absolute/path/company-ca.pem`. Локальный MCP получает его через `NODE_EXTRA_CA_CERTS`; проверка сертификата никогда не отключается.
 

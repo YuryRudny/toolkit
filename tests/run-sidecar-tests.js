@@ -67,7 +67,14 @@ try {
   write(artifactRoot, "workspace.json", `${JSON.stringify({
     schemaVersion: 1,
     workspaceId: "fixture-workspace",
-    artifactRepository: { id: "team-agent-system", remote: artifactRemote },
+    artifactRepository: {
+      id: "team-agent-system",
+      remote: artifactRemote,
+      verification: {
+        automatedTests: [{ id: "runtime-syntax", command: ["node", "--check", "bin/agentctl.js"] }],
+        smokeTests: [{ id: "workspace-doctor", command: ["node", "bin/agentctl.js", "doctor"] }],
+      },
+    },
     toolkit: { path: "../toolkit", remote: "git@example.test:team/toolkit.git" },
     localIntegration: { workspaceRoot: "..", agentsFile: "AGENTS.md", skillsDirectory: ".agents/skills" },
     integrations: {
@@ -77,9 +84,30 @@ try {
       insecureTlsOrigins: ["https://git.example.test"],
     },
     repositories: [
-      { id: "api-service", role: "customer-code", path: "../api-service", remote: apiRemote, defaultBranch: "main" },
-      { id: "web-client", role: "customer-code", path: "../web-client", remote: uiRemote, defaultBranch: "main" },
+      {
+        id: "api-service",
+        role: "customer-code",
+        path: "../api-service",
+        remote: apiRemote,
+        defaultBranch: "main",
+        verification: {
+          automatedTests: [{ id: "unit", command: ["node", "-e", "process.exit(0)"] }],
+          smokeTests: [{ id: "package", command: ["node", "-e", "process.exit(0)"] }],
+        },
+      },
+      {
+        id: "web-client",
+        role: "customer-code",
+        path: "../web-client",
+        remote: uiRemote,
+        defaultBranch: "main",
+        verification: {
+          automatedTests: [],
+          smokeTests: [{ id: "build", command: ["node", "-e", "process.exit(0)"] }],
+        },
+      },
     ],
+    verification: { evidenceFile: ".local/task-verification.json" },
   }, null, 2)}\n`);
   write(artifactRoot, "AGENTS.md", "# Workspace rules\n");
   write(artifactRoot, "codex-skills/skills/workflow-router/SKILL.md", "---\nname: workflow-router\ndescription: Fixture router.\n---\n");
@@ -130,6 +158,13 @@ try {
   command(process.execPath, [agentctl, "doctor"], artifactRoot);
   const status = JSON.parse(command(process.execPath, [agentctl, "status"], artifactRoot).stdout);
   assert.equal(status.knowledgeStatus, "current");
+  command(process.execPath, [agentctl, "smoke", "team-agent-system", "api-service"], artifactRoot);
+  const verificationEvidence = readArtifactJson(".local/task-verification.json");
+  assert.equal(verificationEvidence.status, "passed");
+  assert.deepEqual(verificationEvidence.results.map((item) => item.id), ["team-agent-system", "api-service"]);
+  assert(verificationEvidence.results.every((item) => item.checks.every((check) => check.status === "passed")));
+  const missingAutomatedTests = command(process.execPath, [agentctl, "smoke", "web-client"], artifactRoot, 1);
+  assert(missingAutomatedTests.stdout.includes("No automatedTests configured"));
 
   const envFile = path.join(workspaceRoot, "developer.env");
   const caFile = path.join(workspaceRoot, "company-ca.pem");
