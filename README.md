@@ -33,6 +33,8 @@ node bin/agentctl.js sync
 
 Legacy GitLab с уже принятой project policy `sslVerify=false` может быть указан exact origin в `workspace.json` → `integrations.insecureTlsOrigins`. Исключение действует только на этот GitLab origin и не меняет TLS Jira, Confluence, Figma или других GitLab instances.
 
+Git clone/fetch/push не зависят от GitLab API probe. Sidecar использует нативную Git credential chain: сначала системный helper разработчика (`osxkeychain`, Git Credential Manager и т.п.), затем generated `bin/git-credential-env.js` как fallback. Fallback читает `GITLAB_<NAME>_GIT_USERNAME` + `GITLAB_<NAME>_GIT_TOKEN`, либо существующие `GITLAB_<NAME>_USERNAME` + `GITLAB_<NAME>_TOKEN`, только из локального env и только для совпавшего HTTPS origin.
+
 Ни один sidecar script не должен писать в customer-code repositories. Эта граница проверяется snapshot/verify gate до commit.
 
 ## Project-local Mode
@@ -100,6 +102,7 @@ Research должен идти по воспроизводимому алгор�
 - объясняет, что `.env` нужен только локальному integration runtime;
 - не печатает и не копирует secret values в docs/skills;
 - в sidecar режиме создаёт ignored `.local/integrations.json`, рендерит `bin/enterprise-mcp.js`, устанавливает MCP через `codex mcp add` и выполняет read-only probes всех четырёх систем;
+- настраивает нативный Git transport в `.git/config` customer repositories без записи credentials и проверяет clone/fetch/push-доступ через `agentctl integrations git-doctor`;
 - в project-local режиме сохраняется helper-script flow через `.tmp/`;
 - не перебирает transport/auth modes во время обычной работы: режим задаётся env contract и после ошибки применяется fail-fast;
 - при ошибке говорит точную причину: неверный путь, отсутствующая переменная, протухший токен, DNS/network/auth/permission problem или unexpected response.

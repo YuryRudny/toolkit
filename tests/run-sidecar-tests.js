@@ -51,8 +51,8 @@ function readArtifactJson(rel) {
 
 try {
   const artifactRemote = "ssh://git@git.example.test:9111/team/agent-system.git";
-  const apiRemote = "https://customer.example.test/group/api-service.git";
-  const uiRemote = "https://customer.example.test/group/web-client.git";
+  const apiRemote = "https://git.example.test/group/api-service.git";
+  const uiRemote = "https://git.example.test/group/web-client.git";
   initRepo(artifactRoot, artifactRemote, { "README.md": "# Team agent system\n", ".gitignore": ".local/\n" });
   initRepo(apiRoot, apiRemote, {
     "pom.xml": "<project><artifactId>api-service</artifactId></project>\n",
@@ -120,7 +120,9 @@ try {
   runToolkit("render-workspace-runtime.js", [artifactRoot]);
   const agentctl = path.join(artifactRoot, "bin", "agentctl.js");
   const enterpriseMcp = path.join(artifactRoot, "bin", "enterprise-mcp.js");
+  const gitCredentialHelper = path.join(artifactRoot, "bin", "git-credential-env.js");
   assert(fs.existsSync(enterpriseMcp));
+  assert(fs.existsSync(gitCredentialHelper));
   assert(fs.readFileSync(enterpriseMcp, "utf8").includes('const SERVER_NAME = "fixture-enterprise";'));
   command(process.execPath, [agentctl, "install"], artifactRoot);
   assert.equal(fs.realpathSync(path.join(workspaceRoot, "AGENTS.md")), fs.realpathSync(path.join(artifactRoot, "AGENTS.md")));
@@ -149,6 +151,19 @@ try {
   assert.equal(localIntegration.caFile, caFile);
   assert.deepEqual(localIntegration.insecureTlsOrigins, ["https://git.example.test"]);
   assert(!JSON.stringify(localIntegration).includes("jira-secret"));
+  const apiCredentialHelpers = command("git", ["config", "--local", "--get-all", "credential.helper"], apiRoot).stdout;
+  assert(apiCredentialHelpers.includes("git-credential-env.js"));
+  assert.equal(command("git", ["config", "--local", "--get", "http.https://git.example.test.sslVerify"], apiRoot).stdout.trim(), "false");
+  const credentialResult = command(process.execPath, [gitCredentialHelper, "--config", path.join(artifactRoot, ".local", "integrations.json"), "get"], artifactRoot, 0);
+  const credentialProbe = spawnSync(process.execPath, [gitCredentialHelper, "--config", path.join(artifactRoot, ".local", "integrations.json"), "get"], {
+    cwd: artifactRoot,
+    encoding: "utf8",
+    input: "protocol=https\nhost=git.example.test\n\n",
+  });
+  assert.equal(credentialProbe.status, 0);
+  assert(credentialProbe.stdout.includes("username=oauth2"));
+  assert(credentialProbe.stdout.includes("password=gitlab-secret"));
+  assert.equal(credentialResult.stdout, "");
   const integrationStatus = JSON.parse(command(process.execPath, [agentctl, "integrations", "status"], artifactRoot).stdout);
   assert(integrationStatus.services.some((item) => item.kind === "figma" && item.configured));
   assert(integrationStatus.services.some((item) => item.kind === "gitlab" && item.tlsVerification === "disabled-project-exception"));

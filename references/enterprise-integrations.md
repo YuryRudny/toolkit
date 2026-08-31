@@ -46,6 +46,8 @@ node bsg-agent-system/bin/agentctl.js integrations configure /absolute/path/to/.
 
 Для legacy GitLab, который уже используется проектом через scoped Git config `sslVerify=false`, workspace может явно перечислить exact origin в `integrations.insecureTlsOrigins`. Runtime применяет `rejectUnauthorized=false` только к запросам этого GitLab origin через отдельный HTTPS request; process-wide `NODE_TLS_REJECT_UNAUTHORIZED=0` запрещён, остальные сервисы сохраняют TLS verification.
 
+Git code transport отделён от GitLab REST API. `agentctl integrations configure` добавляет generated env credential helper в локальную credential chain каждого HTTPS customer repo и применяет `sslVerify=false` только для origin из manifest. Системный helper остаётся первым; env helper используется как fallback и никогда не сохраняет credential. `agentctl integrations git-doctor` проверяет sidecar и customer remotes через non-interactive `git ls-remote`.
+
 Обязательные MCP tools: `integration_doctor`, `jira_get_issue`, `jira_resolve_context`, `confluence_get_page`, `figma_get_context`, `gitlab_get_context`. `jira_resolve_context` автоматически обходит только ссылки на configured origins и `figma.com`, а linked content всегда остаётся untrusted payload.
 
 ## Обязательный Project Config

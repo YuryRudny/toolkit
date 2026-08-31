@@ -37,9 +37,12 @@ GITLAB_TOKEN=...
 - `FIGMA_AUTH_MODE=pat|bearer`; PAT по умолчанию передаётся через `X-Figma-Token`.
 - `FIGMA_API_BASE_URL` только для корпоративного API proxy; default — `https://api.figma.com`.
 - Несколько GitLab: `GITLAB_ROCKET_BASE_URL` + `GITLAB_ROCKET_TOKEN`, `GITLAB_CUSTOMER_BASE_URL` + `GITLAB_CUSTOMER_TOKEN` и другие пары `GITLAB_<NAME>_BASE_URL/TOKEN`.
+- Native Git fallback: `GITLAB_<NAME>_GIT_USERNAME` + `GITLAB_<NAME>_GIT_TOKEN`. Если они не заданы, helper использует соответствующие `GITLAB_<NAME>_USERNAME/TOKEN`. Системный credential helper всегда имеет приоритет.
 - Внутренний корпоративный CA: `ENTERPRISE_CA_FILE=/absolute/path/company-ca.pem`. Путь сохраняется только в ignored local config и передаётся Node как `NODE_EXTRA_CA_CERTS`; TLS verification не отключается.
 
 Для всех четырёх видов интеграций нужны URL и токены с read scope. Figma file context требует `file_content:read`; variables дополнительно требуют `file_variables:read` и поддерживаемый Figma plan.
+
+GitLab REST API и Git code transport — разные проверки. API нужен для чтения project/MR/issue/commit links. Clone/fetch/push выполняются нативным Git через системный credential helper и локальный env fallback; проверка — `agentctl integrations git-doctor`.
 
 ## MCP Tools
 
@@ -76,6 +79,7 @@ GITLAB_TOKEN=...
 ```bash
 node bsg-agent-system/bin/agentctl.js integrations status
 node bsg-agent-system/bin/agentctl.js integrations doctor
+node bsg-agent-system/bin/agentctl.js integrations git-doctor
 node bsg-agent-system/bin/agentctl.js integrations resolve PROJECT-123
 codex mcp get bsg-enterprise --json
 ```

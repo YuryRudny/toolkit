@@ -8,6 +8,7 @@ const workspace = loadWorkspace(process.argv[2] || process.cwd());
 const runtimeTemplates = [["agentctl.template.js", "bin/agentctl.js"]];
 if (workspace.manifest.integrations) {
   runtimeTemplates.push(["enterprise-mcp.template.js", "bin/enterprise-mcp.js"]);
+  runtimeTemplates.push(["git-credential-env.template.js", "bin/git-credential-env.js"]);
 }
 
 for (const [templateName, outputPath] of runtimeTemplates) {

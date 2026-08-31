@@ -167,6 +167,7 @@ function phaseFailures(phase) {
       if (!exists("bin/agentctl.js")) failures.push("missing bin/agentctl.js workspace runtime");
       const workspace = readJson("workspace.json");
       if (workspace?.integrations && !exists("bin/enterprise-mcp.js")) failures.push("missing bin/enterprise-mcp.js workspace integration runtime");
+      if (workspace?.integrations && !exists("bin/git-credential-env.js")) failures.push("missing bin/git-credential-env.js workspace Git credential runtime");
     } else {
       const ignore = exists(".gitignore") ? fs.readFileSync(path.join(root, ".gitignore"), "utf8") : "";
       if (!/^reusable-agent-system-toolkit\/$/m.test(ignore)) failures.push(".gitignore does not ignore reusable-agent-system-toolkit/");

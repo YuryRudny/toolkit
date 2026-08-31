@@ -50,6 +50,9 @@ requirePattern("templates/workspace/enterprise-mcp.template.js", /runtime\.local
 forbidPattern("templates/workspace/enterprise-mcp.template.js", /NODE_TLS_REJECT_UNAUTHORIZED/, "enterprise MCP disables TLS verification process-wide");
 requirePattern("templates/workspace/enterprise-mcp.template.js", /trustBoundary/, "enterprise MCP does not mark external content as untrusted");
 forbidPattern("templates/workspace/enterprise-mcp.template.js", /console\.log\([^\n]*(?:token|headers|env)\b/i, "enterprise MCP can print secret-bearing runtime state");
+requirePattern("templates/workspace/git-credential-env.template.js", /candidate\.origin === requestedOrigin/, "Git credential helper does not restrict credentials to the configured origin");
+requirePattern("templates/workspace/git-credential-env.template.js", /action !== "get"/, "Git credential helper can mutate the credential store");
+forbidPattern("templates/workspace/git-credential-env.template.js", /console\.(?:log|error)/, "Git credential helper can log secret-bearing runtime state");
 
 requirePattern("scripts/render-skills.js", /resolveInside/, "renderer does not enforce output containment");
 requirePattern("scripts/render-skills.js", /assertSafeReference/, "renderer does not validate reference paths");

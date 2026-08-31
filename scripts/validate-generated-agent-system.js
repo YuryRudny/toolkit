@@ -197,6 +197,7 @@ const workspaceManifest = readJsonSafe(path.join(root, "workspace.json"));
 if (workspaceManifest?.integrations) {
   requiredOperationalSkills.push("enterprise-context");
   if (!fs.existsSync(path.join(root, "bin", "enterprise-mcp.js"))) failures.push("bin/enterprise-mcp.js: missing configured enterprise runtime");
+  if (!fs.existsSync(path.join(root, "bin", "git-credential-env.js"))) failures.push("bin/git-credential-env.js: missing native Git credential runtime");
   if (!fs.existsSync(path.join(root, "codex-skills", "references", "enterprise-context.md"))) failures.push("codex-skills/references/enterprise-context.md: missing enterprise contract");
 }
 

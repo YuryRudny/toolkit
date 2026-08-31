@@ -8,6 +8,7 @@ const artifactRoot = path.resolve(__dirname, "..");
 const manifestPath = path.join(artifactRoot, "workspace.json");
 const forbiddenAgentArtifact = /(^|\/)(AGENTS(?:\.override)?\.md|\.agents|\.codex|codex-skills|docs\/agent-system|reusable-agent-system-toolkit)(\/|$)/;
 const enterpriseServerPath = path.join(artifactRoot, "bin", "enterprise-mcp.js");
+const gitCredentialHelperPath = path.join(artifactRoot, "bin", "git-credential-env.js");
 
 function fail(message) {
   console.error(message);
@@ -30,6 +31,19 @@ function git(cwd, args, fallback = null) {
 
 function normalizeRemote(value) {
   return String(value || "").replace(/\.git$/, "").replace(/\/$/, "");
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'"'"'`)}'`;
+}
+
+function remoteOrigin(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.origin : null;
+  } catch {
+    return null;
+  }
 }
 
 function resolveWorkspace() {
@@ -222,16 +236,60 @@ function configureIntegrations() {
   }, null, 2)}\n`, { mode: 0o600 });
   fs.chmodSync(localConfigPath, 0o600);
 
+  configureGitTransport(workspace);
+
   const statusResult = runEnterprise(workspace.manifest, ["--status"], { capture: true });
   const status = parseChildJson(statusResult, "Enterprise configuration validation");
   const required = integrationSettings(workspace.manifest).requiredServices;
-  const missing = required.filter((kind) => !status.services.some((item) => item.kind === kind && item.configured));
+  const missing = required.filter((kind) => kind !== "gitlab" && !status.services.some((item) => item.kind === kind && item.configured));
   if (missing.length) {
     fail(`Env file is missing required integration configuration: ${missing.join(", ")}. Secret values were not printed.`);
   }
   console.log(`Local enterprise config created: ${localConfigPath} (secret values remain only in ${envFile})`);
   if (!process.argv.includes("--skip-mcp-install")) installEnterpriseMcp(workspace.manifest);
-  if (!process.argv.includes("--skip-probe")) runEnterprise(workspace.manifest, ["--doctor"]);
+  if (!process.argv.includes("--skip-probe")) integrationDoctor();
+}
+
+function configureGitTransport(workspace) {
+  if (!fs.existsSync(gitCredentialHelperPath)) fail(`Missing Git credential runtime: ${gitCredentialHelperPath}`);
+  const settings = integrationSettings(workspace.manifest);
+  const helper = `!${shellQuote(process.execPath)} ${shellQuote(gitCredentialHelperPath)} --config ${shellQuote(integrationConfigPath(workspace.manifest))}`;
+  for (const repo of workspace.repositories) {
+    const origin = remoteOrigin(repo.remote);
+    if (!origin) continue;
+    const helpers = git(repo.root, ["config", "--local", "--get-all", "credential.helper"], "").split(/\r?\n/).filter(Boolean);
+    if (!helpers.includes(helper)) git(repo.root, ["config", "--local", "--add", "credential.helper", helper]);
+    if (settings.insecureTlsOrigins.includes(origin)) {
+      git(repo.root, ["config", "--local", `http.${origin}.sslVerify`, "false"]);
+    }
+  }
+  console.log("Native Git transport configured: system credential helpers first, local env fallback second.");
+}
+
+function nativeGitDoctor(workspace) {
+  const repositories = [
+    { id: workspace.manifest.artifactRepository.id, root: artifactRoot, remote: workspace.manifest.artifactRepository.remote },
+    ...workspace.repositories,
+  ];
+  const results = repositories.map((repo) => {
+    const probe = spawnSync("git", ["ls-remote", "origin", "HEAD"], {
+      cwd: repo.root,
+      encoding: "utf8",
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      timeout: 20000,
+    });
+    return {
+      id: repo.id,
+      remote: repo.remote,
+      status: probe.status === 0 ? "passed" : "failed",
+      ...(probe.status === 0 ? {} : { message: String(probe.stderr || probe.error?.message || "Git authentication failed").trim().slice(0, 500) }),
+    };
+  });
+  return {
+    status: results.every((item) => item.status === "passed") ? "passed" : "failed",
+    authentication: "native-git-credential-chain",
+    results,
+  };
 }
 
 function integrationStatus() {
@@ -241,7 +299,33 @@ function integrationStatus() {
 
 function integrationDoctor() {
   const workspace = resolveWorkspace();
-  runEnterprise(workspace.manifest, ["--doctor"]);
+  const enterpriseResult = runEnterprise(workspace.manifest, ["--doctor"], { capture: true });
+  let enterprise;
+  try { enterprise = JSON.parse(enterpriseResult.stdout); }
+  catch { fail(`Enterprise integration doctor returned invalid JSON: ${String(enterpriseResult.stderr || "").trim()}`); }
+  const nativeGit = nativeGitDoctor(workspace);
+  const requiredApiFailures = (enterprise.results || []).filter((item) => item.status === "failed" && item.kind !== "gitlab");
+  const gitlabApiFailures = (enterprise.results || []).filter((item) => item.status === "failed" && item.kind === "gitlab");
+  const missingRequiredApis = (enterprise.missingKinds || []).filter((kind) => kind !== "gitlab");
+  const gitlabApiMissing = (enterprise.missingKinds || []).includes("gitlab");
+  const failed = requiredApiFailures.length > 0 || missingRequiredApis.length > 0 || nativeGit.status !== "passed";
+  const warnings = gitlabApiFailures.map((item) => `${item.id}: GitLab API context is unavailable; native clone/fetch/push is verified separately.`);
+  if (gitlabApiMissing) warnings.push("GitLab API context is not configured; native clone/fetch/push is verified separately.");
+  const result = {
+    status: failed ? "failed" : (warnings.length ? "passed-with-warnings" : "passed"),
+    enterpriseApi: enterprise,
+    nativeGit,
+    warnings,
+  };
+  console.log(JSON.stringify(result, null, 2));
+  if (failed) process.exit(1);
+}
+
+function integrationGitDoctor() {
+  const workspace = resolveWorkspace();
+  const result = nativeGitDoctor(workspace);
+  console.log(JSON.stringify(result, null, 2));
+  if (result.status !== "passed") process.exit(1);
 }
 
 function integrationResolve() {
@@ -258,9 +342,10 @@ function integrations() {
   if (action === "configure") configureIntegrations();
   else if (action === "status") integrationStatus();
   else if (action === "doctor") integrationDoctor();
+  else if (action === "git-doctor") integrationGitDoctor();
   else if (action === "install-mcp") installEnterpriseMcp(workspace.manifest);
   else if (action === "resolve") integrationResolve();
-  else fail("Usage: agentctl.js integrations <configure|status|doctor|install-mcp|resolve>");
+  else fail("Usage: agentctl.js integrations <configure|status|doctor|git-doctor|install-mcp|resolve>");
 }
 
 function doctor() {

@@ -128,6 +128,7 @@ const languageScore = clamp(10 - Math.min(englishMarkers.length, 10));
 const sidecarEnterpriseReady = Boolean(
   workspace.integrations
   && exists("bin/enterprise-mcp.js")
+  && exists("bin/git-credential-env.js")
   && exists("codex-skills/skills/enterprise-context/SKILL.md")
   && exists("codex-skills/references/enterprise-context.md")
 );
