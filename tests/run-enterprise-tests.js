@@ -111,7 +111,7 @@ async function main() {
           issuetype: { name: "Story" },
           assignee: { displayName: "Developer" },
           reporter: { displayName: "Product" },
-          description: `${confluenceBase}/pages/viewpage.action?pageId=123 ${figmaBase.replace(/^http:\/\/127\.0\.0\.1:\d+$/, "https://www.figma.com")}/design/FILE123/Screen?node-id=1-2 ${gitlabBase}/group/project/-/merge_requests/7`,
+          description: `${confluenceBase}/spaces/BSG/pages/123/Application+specification ${figmaBase.replace(/^http:\/\/127\.0\.0\.1:\d+$/, "https://www.figma.com")}/design/FILE123/Screen?node-id=1-2 ${gitlabBase}/group/project/-/merge_requests/7`,
           comment: { comments: [] },
         },
         renderedFields: {},

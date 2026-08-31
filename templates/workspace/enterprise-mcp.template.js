@@ -382,7 +382,9 @@ function confluenceTarget(input, service) {
   try { url = new URL(value); }
   catch { throw new IntegrationError("confluence", "request", "Expected a Confluence page id or configured Confluence URL."); }
   resolveServiceUrl(service, url.toString());
-  const pageId = url.searchParams.get("pageId") || url.pathname.match(/\/content\/(\d+)/)?.[1];
+  const pageId = url.searchParams.get("pageId")
+    || url.pathname.match(/\/content\/(\d+)/)?.[1]
+    || url.pathname.match(/\/spaces\/[^/]+\/pages\/(\d+)(?:\/|$)/i)?.[1];
   if (pageId) return { type: "id", id: pageId };
   const display = url.pathname.match(/\/display\/([^/]+)\/(.+)$/);
   if (display) return { type: "title", spaceKey: decodeURIComponent(display[1]), title: decodeURIComponent(display[2]).replace(/\+/g, " ") };
