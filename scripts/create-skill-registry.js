@@ -6,6 +6,7 @@ const path = require("path");
 const root = path.resolve(process.argv[2] || process.cwd());
 const skillsRoot = path.join(root, "codex-skills", "skills");
 const inputsIndex = path.join(root, "docs", "agent-system", "skill-inputs", "index.json");
+const projectModelPath = path.join(root, "docs", "agent-system", "project-model.json");
 const outPath = path.join(root, "docs", "agent-system", "skill-registry.json");
 
 function readJson(file) {
@@ -72,10 +73,15 @@ const skills = [...byName.values()].map((skill) => ({
   category: categoryRules.find(([pattern]) => pattern.test(skill.name))?.[1] || "domain",
 })).sort((a, b) => a.name.localeCompare(b.name));
 
+const projectModel = readJson(projectModelPath);
+const registryRoot = projectModel?.mode === "sidecar-workspace"
+  ? projectModel.projectRoot
+  : root;
+
 const registry = {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
-  projectRoot: root,
+  projectRoot: registryRoot,
   skills,
 };
 

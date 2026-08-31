@@ -199,7 +199,8 @@ const projectMap = readText("docs/agent-system/project-map.md");
 const knowledgeIndex = readText("docs/agent-system/knowledge-index.md");
 const smokeChecklist = readText("docs/agent-system/smoke-checklist.md");
 const seedSelection = readText("docs/agent-system/seed-selection.md");
-const criticalFlowsForm = readText("docs/agent-system/research-workspace/forms/critical-flows.form.md");
+const criticalFlowsForm = readText("docs/agent-system/research-workspace/forms/critical-flows.md")
+  || readText("docs/agent-system/research-workspace/forms/critical-flows.form.md");
 const seedManifest = readToolkitJson("skill-seeds/manifest.json") || {};
 const agentSkillsManifest = readToolkitJson("skill-seeds/external/agent-skills-main.manifest.json") || {};
 const aiAgentsManifest = readToolkitJson("skill-seeds/external/ai-agents-skills-main.manifest.json") || {};
@@ -264,7 +265,7 @@ const baseRagRoutes = [
   },
 ];
 
-const commonHooks = sourceRoots.slice(0, 4).map((rootPath) => ({
+const commonHooks = sourceRoots.slice(0, 8).map((rootPath) => ({
   name: `Корень исходников ${rootPath}`,
   paths: [rootPath],
   why: "точка входа для поиска touched area и соседних patterns",
@@ -443,7 +444,24 @@ function commandListFor(skillName) {
     if (/cache|clear/i.test(name)) return /backend|security|debugging|code-review/.test(skillName);
     return false;
   });
-  return allowed.map((name) => `${name}: ${scripts[name]}`);
+  const projectCommands = allowed.map((name) => `${name}: ${scripts[name]}`);
+  if (projectModel.mode === "sidecar-workspace") {
+    if (/frontend|testing|code-review|debugging/.test(skillName)) {
+      projectCommands.push(
+        "frontend-service: npm run lint",
+        "frontend-service: npm run type-check",
+        "frontend-service: npm run build",
+      );
+    }
+    if (/backend|api-contract|testing|security|code-review|debugging|refactor/.test(skillName)) {
+      projectCommands.push(
+        "Java service: ./gradlew test",
+        "Java service: ./gradlew check",
+        "application-service: ./gradlew integrationTest",
+      );
+    }
+  }
+  return uniq(projectCommands);
 }
 
 function titleForSkill(name, fallback) {
@@ -882,10 +900,18 @@ for (const [name, payload] of selected) {
     fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`);
   } else {
     const current = readGeneratedJson(`docs/agent-system/skill-inputs/${name}.json`);
-    if (current && (current.profileId !== payload.profileId || current.profileTitle !== payload.profileTitle)) {
+    if (current && current.status === "draft") {
       current.profileId = payload.profileId;
       current.profileTitle = payload.profileTitle;
       current.profileRoles = payload.profileRoles;
+      current.detectedEvidence = payload.detectedEvidence;
+      current.sourceRoots = payload.sourceRoots;
+      current.commands = payload.commands;
+      current.ragRoutes = payload.ragRoutes;
+      current.projectHooks = payload.projectHooks;
+      current.criticalFlows = payload.criticalFlows;
+      current.localRisks = payload.localRisks;
+      current.refactorLinks = payload.refactorLinks;
       fs.writeFileSync(filePath, `${JSON.stringify(current, null, 2)}\n`);
     }
   }

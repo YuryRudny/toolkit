@@ -1,23 +1,37 @@
 ---
 name: project-agent-bootstrap
-description: Запускает внедрение reusable AI-agent operating system в новом репозитории. Используй, когда пользователь копирует toolkit в любой проект и просит создать project-local skills, docs, workflow modes, audit и stack-specific engineering rules.
+description: Запускает внедрение reusable AI-agent operating system в одном репозитории или отдельном sidecar workspace. Используй, когда нужно создать project-specific skills, RAG/docs, workflow modes, audit и stack-specific engineering rules без загрязнения customer-code репозиториев.
 ---
 
 # Project Agent Bootstrap
 
 ## Path-First Launch Contract
 
-Этот bootstrap запускается только из локальной папки toolkit внутри текущего целевого проекта. До любых действий с репозиторием агент обязан принять текущий working directory как project root и проверить файл:
+Bootstrap поддерживает два явных режима.
+
+В `project-local` режиме toolkit находится внутри единственного целевого проекта. До любых действий агент принимает current working directory как project root и проверяет файл:
 
 ```text
 ./reusable-agent-system-toolkit/skills/project-agent-bootstrap/SKILL.md
 ```
 
-Если файл существует, агент читает именно его и продолжает по этому алгоритму. Не используй `tool_search`, `~/.codex`, plugins, `node_modules/reusable-agent-system-toolkit`, соседние проекты или родительские workspace-папки для поиска bootstrap, если локальный файл уже есть.
+Если файл существует, агент читает именно его и продолжает по этому алгоритму. Не используй `tool_search`, `~/.codex`, plugins или `node_modules/reusable-agent-system-toolkit`, если локальный файл уже есть.
 
-Если файла нет в текущем project root, bootstrap не запускается. Агент обязан остановиться и сказать: `reusable-agent-system-toolkit не найден в корне текущего проекта`. Запрещено создавать `.codex/skills`, `codex-skills`, `docs/agent-system` или "ближайший эквивалент" без локального bootstrap SKILL.md.
+В `sidecar-workspace` режиме current working directory является Git-корнем внутреннего artifact repository и содержит `workspace.json`. Toolkit разрешено держать в отдельном sibling Git repository, но его `path` и `remote` должны быть явно зафиксированы в `workspace.json`. Customer-code репозитории также перечислены в manifest как sibling Git roots. Все RAG/docs/skills/runtime записываются только в artifact repository; customer-code репозитории во время bootstrap являются read-only evidence sources.
 
-Если пользователь дал абсолютный путь к toolkit, сначала проверь, что этот путь находится внутри целевого проекта. Toolkit из соседнего проекта можно только скопировать в текущий project root; запускать bootstrap из соседней копии нельзя.
+Если нет ни локального `./reusable-agent-system-toolkit/skills/project-agent-bootstrap/SKILL.md`, ни валидного `workspace.json` с доступным toolkit path, bootstrap не запускается. Запрещено создавать `.codex/skills`, `codex-skills`, `docs/agent-system` или ближайший эквивалент в customer-code репозитории.
+
+### Sidecar Safety Contract
+
+При наличии `workspace.json` этот контракт имеет приоритет над project-local шагами ниже:
+
+1. Artifact repository — единственная write target для agent-system артефактов.
+2. До discovery выполни `workspace-snapshot`, затем `create-workspace-model`; обычный `create-model` в sidecar режиме запрещён.
+3. Во всех документах используй logical source paths `repo://<repository-id>/<path>`, не абсолютные пути конкретной машины.
+4. После каждого генерационного этапа выполни `workspace-verify`. Любое изменение HEAD или worktree customer repository блокирует bootstrap.
+5. Не создавай и не меняй в customer repositories `AGENTS.md`, `.agents`, `.codex`, `codex-skills`, `docs/agent-system`, `.gitignore` или toolkit files.
+6. Перед завершением выполни `render-workspace-runtime`, `commit-plan` и `workspace-verify`.
+7. Git routing строгий: customer code отправляется только в remote соответствующего customer repository; RAG/docs/skills/rules/runtime — только в artifact remote.
 
 ## Обзор
 
@@ -31,18 +45,25 @@ description: Запускает внедрение reusable AI-agent operating s
 
 ## Исполняемый Контур
 
-Используй единый entrypoint:
+Используй единый entrypoint. Для project-local режима:
 
 ```bash
 node reusable-agent-system-toolkit/scripts/bootstrap.js <command> .
 ```
 
+Для sidecar режима запускай entrypoint из manifest toolkit path, оставляя `.` artifact root:
+
+```bash
+node ../reusable-agent-system-toolkit-source/scripts/bootstrap.js <command> .
+```
+
 Основные команды по порядку:
 
 ```text
-init -> security-audit -> set-install-mode -> create-model -> create-research -> sync-research
+init -> security-audit -> set-install-mode -> workspace-snapshot -> create-workspace-model -> create-research -> sync-research
 -> create-skill-inputs -> extract-seeds -> render-skills
 -> render-operational -> build-registry -> quality-report -> validate
+-> render-workspace-runtime -> workspace-verify -> commit-plan
 ```
 
 Завершай текущую фазу только командой:
@@ -77,7 +98,7 @@ State machine проверяет prerequisites и отклоняет перех�
 ## Порядок работы
 
 1. Напиши Skill Ledger до первого repo action, запусти `node reusable-agent-system-toolkit/scripts/bootstrap.js init .`, затем `node reusable-agent-system-toolkit/scripts/bootstrap.js security-audit .`. Любая ошибка integrity/security audit означает поврежденную или небезопасную копию toolkit; остановись до install wizard и покажи точный finding.
-2. Проверь branch/status и уточни, должны ли generated files оставаться uncommitted. Все переходы фаз выполняй через `bootstrap.js complete-phase`.
+2. Проверь branch/status. В sidecar режиме отдельно проверь artifact remote и каждый customer-code remote по `workspace.json`, затем создай source snapshot. Все переходы фаз выполняй через `bootstrap.js complete-phase`.
 3. Запусти install wizard до discovery:
    - объясни, что `.env` нужен агенту только для настройки воспроизводимого доступа к Jira, Confluence и Git/GitLab/MCP;
    - попроси путь до `.env` с токенами/URL для enterprise integrations, если путь еще не известен из existing project rules;
@@ -118,7 +139,7 @@ State machine проверяет prerequisites и отклоняет перех�
    - Если есть unresolved conflicts по router/mode/enterprise/review/commit authority, остановись до генерации docs/skills.
    - Existing local skills нельзя перезаписывать; их нужно preserve, route to, wrap или augment только по merge decision.
 10. Если deep scan разрешен, следуй full фазам из `bootstrap-strict-algorithm.md`. Запусти read-only `project-discovery`, чтобы собрать stack, commands, architecture, tests, domains, critical flows и enterprise integration config. На этом шаге не создавай финальные docs/skills и не читай `templates/skills/*`.
-    - Сразу после merge/discovery запусти `node reusable-agent-system-toolkit/scripts/bootstrap.js create-model .`.
+    - В project-local режиме после merge/discovery запусти `create-model`; в sidecar режиме — только `create-workspace-model` после `workspace-snapshot`.
     - Используй `project-model.json` как canonical topology/capability model.
     - Не отмечай discovery завершенным, пока model не содержит modules, entry points, manifests, capabilities и existing rules inventory.
 11. Если deep scan разрешен, создай `docs/agent-system/research-workspace/` по `research-working-memory.md`: `research-plan.md`, `research-notes.md`, `evidence-log.md`, `error-log.md`, `decisions.md`. Веди эти файлы во время всего research.
@@ -172,10 +193,11 @@ State machine проверяет prerequisites и отклоняет перех�
 24. Проверь bootstrap результат по `bootstrap-acceptance-checklist.md`.
 25. Проверь generated skill frontmatter, unfinished placeholder markers, trace выбора seeds и enterprise fail-fast gates.
 26. Выполни final repository hygiene:
-   - добавь `reusable-agent-system-toolkit/` в `.gitignore`, если такой строки еще нет;
+   - в project-local режиме добавь `reusable-agent-system-toolkit/` в `.gitignore`, если такой строки еще нет;
    - проверь staged files;
    - если `reusable-agent-system-toolkit/` случайно staged, убери только эту папку из index командой `git restore --staged reusable-agent-system-toolkit/` или эквивалентным non-destructive unstage;
    - не удаляй toolkit с диска и не трогай unrelated staged files.
+   - в sidecar режиме не меняй customer `.gitignore`; выполни `render-workspace-runtime`, `workspace-verify` и `commit-plan` в artifact repository.
 27. Заверши short operating summary: generated files, active skill path, выбранные seeds, checks, gaps, bootstrap phases, quality score и next steps.
 
 ## Контрольные gates
@@ -216,7 +238,7 @@ State machine проверяет prerequisites и отклоняет перех�
 - Не называй выбор seeds пройденным, если `selected/recommended/skipped` не записаны в docs или bootstrap summary.
 - Не называй generated system validation clean, если language marker scan нашел английские служебные headings/instructions в generated skills/docs.
 - Не останавливайся за approval между research и генерацией, если coverage/depth validation passed: первый bootstrap должен сам пройти до RAG/docs/skills.
-- Не допускай попадания `reusable-agent-system-toolkit/` в commit целевого проекта: папка должна быть в `.gitignore` и не должна оставаться staged.
+- В project-local режиме не допускай попадания `reusable-agent-system-toolkit/` в commit целевого проекта. В sidecar режиме toolkit и agent-system являются отдельными внутренними Git repositories, а customer-code repositories должны остаться без agent artifacts.
 - Не называй систему готовой, пока validation не прошла или gaps не записаны явно.
 - Не называй bootstrap успешным, если acceptance checklist failed.
 
@@ -243,7 +265,8 @@ State machine проверяет prerequisites и отклоняет перех�
 - Сгенерированные skills превращаются в generic text без project evidence.
 - Сгенерированные skills/docs содержат английские служебные headings/instructions при русской policy.
 - Generated system validation failed.
-- `reusable-agent-system-toolkit/` невозможно добавить в `.gitignore` или невозможно безопасно unstage без затрагивания unrelated staged files.
+- В project-local режиме `reusable-agent-system-toolkit/` невозможно добавить в `.gitignore` или невозможно безопасно unstage без затрагивания unrelated staged files.
+- В sidecar режиме `workspace-verify` или `commit-plan` обнаружил изменение customer repository либо agent artifact в Git заказчика.
 
 ## Формат результата
 

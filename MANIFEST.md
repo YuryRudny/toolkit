@@ -2,6 +2,8 @@
 
 ## Installation flow
 
+Sidecar workspace определяется наличием `workspace.json` в Git-корне artifact repository. В этом режиме toolkit path берётся из manifest, customer repositories остаются read-only, а все generated artifacts пишутся в artifact repository.
+
 1. Запускай только локальный bootstrap файл из корня целевого проекта: `./reusable-agent-system-toolkit/skills/project-agent-bootstrap/SKILL.md`. Не ищи bootstrap в `~/.codex`, plugins, `node_modules` или соседних проектах; если локального файла нет, остановись без fallback skills.
 2. Следуй `bootstrap-strict-algorithm`: фазы нельзя менять местами.
 3. Install wizard спрашивает путь до `.env` для Jira/Confluence/Git/GitLab/MCP access, объясняет зачем он нужен и что secret values не будут печататься или копироваться.
@@ -10,7 +12,7 @@
 6. Если пользователь пропускает deep scan, предупреди о последствиях: нет полноценной RAG базы, project map, risk register, refactor plan и concrete stack-specific skills. Продолжай только как `degraded install`.
 7. Если deep scan разрешен, используй единый `scripts/bootstrap.js`: создай canonical `project-model.json`, topology-based research task graph, заполни evidence/forms, собери RAG/docs, затем выполни capability-based seed selection, structured skill inputs, seed extraction, full skill render, registry-based operational render, вычисляемый quality report и validation result.
 8. Если deep scan пропущен, создай только minimal docs/skills с marker `Degraded install: deep scan skipped by user`; не называй RAG/project map/refactor plan готовыми.
-9. В конце установки добавь `reusable-agent-system-toolkit/` в `.gitignore` целевого проекта и убери эту папку из staged files, если пользователь случайно ее застейджил.
+9. В project-local режиме добавь `reusable-agent-system-toolkit/` в `.gitignore` целевого проекта. В sidecar режиме вместо этого выполни `workspace-verify`, сгенерируй `bin/agentctl.js` и проверь `commit-plan`; customer repositories менять запрещено.
 
 ## Не цели
 
@@ -28,7 +30,7 @@
 - Не оставлять Jira/Confluence setup на словах: helper scripts должны быть созданы из toolkit templates.
 - Не спрашивать deep scan до завершения enterprise/MCP setup.
 - Если `templates/enterprise-scripts/*` отсутствуют, это stale/incomplete toolkit copy; остановись и попроси обновить toolkit.
-- Не допускать попадания `reusable-agent-system-toolkit/` в commit целевого проекта.
+- Не допускать попадания toolkit или agent-system artifacts в customer-code repository; в sidecar режиме они коммитятся только в отдельные внутренние repositories.
 - Не читать `templates/skills/*` и `generated-skill-catalog.md` до artifact gate `Docs/RAG Ready`.
 - Не считать первый bootstrap завершенным после поверхностного summary по стеку.
 - Не считать deep research завершенным без layer classification, defect hunt matrix и evidence по применимым defect classes.
@@ -117,7 +119,9 @@ scripts/
   bootstrap-state.js
   create-project-model.js
   create-research-tasks.js
+  init-research-workspace.js
   create-skill-inputs.js
+  finalize-skill-inputs.js
   extract-seed-playbooks.js
   render-skills.js
   render-operational-skills.js

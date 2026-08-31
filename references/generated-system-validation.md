@@ -22,7 +22,7 @@
 - existing rules merge artifact with local skills inventory and authority matrix, if existing rules/local skills were found.
 - результат выбора seeds: `selected`, `recommended`, `skipped` с evidence и target generated skills/references.
 - external seed library artifacts, если library подключена: manifest/index/folder для каждой записи из `skill-seeds/manifest.json.externalLibraries`.
-- `.gitignore` entry for `reusable-agent-system-toolkit/`.
+- project-local: `.gitignore` entry for `reusable-agent-system-toolkit/`; sidecar: passed `source-boundary-result.json` and generated `bin/agentctl.js`.
 
 ## Skill Frontmatter Validation
 
@@ -406,15 +406,15 @@ Docs density fail markers:
 
 Проверь:
 
-- `.gitignore` содержит `reusable-agent-system-toolkit/`;
-- `reusable-agent-system-toolkit/` не находится в staged files;
+- project-local: `.gitignore` содержит `reusable-agent-system-toolkit/`, toolkit не staged;
+- sidecar: `workspace-verify` и `commit-plan` прошли, customer-code репозитории не содержат agent artifacts;
 - cleanup не трогал unrelated staged files;
 - toolkit folder не удален с диска.
 
 Validation fail:
 
 - toolkit folder staged;
-- `.gitignore` entry missing;
+- project-local `.gitignore` entry missing либо sidecar source-boundary validation failed;
 - cleanup выполнен через broad reset/checkout или затронул unrelated staged files.
 
 ## Install Mode Validation

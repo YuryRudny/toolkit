@@ -46,9 +46,13 @@ function renderProjectEntry() {
     process.exit(1);
   }
 
-  const body = fs.readFileSync(entryTemplatePath, "utf8")
+  const model = readJson("docs/agent-system/project-model.json") || {};
+  const sidecarRules = model.mode === "sidecar-workspace"
+    ? `\n\n## Sidecar Preflight\n\n- До чтения customer source и первого Git action выполни \`node bsg-agent-system/bin/agentctl.js sync\` из workspace root. Это обычный \`git pull --ff-only\` внутреннего репозитория по SSH.\n- Затем выполни \`node bsg-agent-system/bin/agentctl.js status\`. При \`knowledgeStatus: stale\` сначала сделай targeted update затронутой RAG области.\n- Код коммить только в его customer repository; docs/RAG/skills — только в bsg-agent-system. Перед commit/push выполни \`node bsg-agent-system/bin/agentctl.js commit-plan\`.\n- Не создавай AGENTS.md, .agents, .codex, codex-skills, docs/agent-system или toolkit paths внутри customer-code repositories.`
+    : "";
+  const body = `${fs.readFileSync(entryTemplatePath, "utf8")
     .replaceAll("<PROJECT_SKILLS_PATH>", "codex-skills/skills")
-    .trim();
+    .trim()}${sidecarRules}`;
   const managedBlock = `${entryStart}\n${body}\n${entryEnd}`;
 
   if (!fs.existsSync(entryPath)) {
@@ -79,10 +83,17 @@ for (const [skillName, templateName] of templates) {
   }
   let text = fs.readFileSync(templatePath, "utf8");
   if (skillName === "git-remote-flow") {
-    const git = readJson("docs/agent-system/project-model.json")?.integrations?.git || {};
+    const model = readJson("docs/agent-system/project-model.json") || {};
+    const workspace = readJson("workspace.json") || {};
+    const git = model.integrations?.git || {};
+    const sources = model.integrations?.sources || [];
+    const routing = model.mode === "sidecar-workspace"
+      ? `## Repository Routing\n\n- RAG, docs, skills, agent rules и runtime: \`${git.remote || "artifact remote не определён"}\`.\n${sources.map((source) => `- Customer code \`${source.id}\`: \`${source.remote}\`.`).join("\n")}`
+      : "## Repository Routing\n\n- Следуй origin текущего project repository.";
     text = text
       .replace("- Remote:", `- Remote: ${git.remote || "не определён"}`)
-      .replace("- Базовая ветка:", `- Базовая ветка: ${git.branch || "требует project policy"}`);
+      .replace("- Базовая ветка:", `- Базовая ветка: ${workspace.artifactRepository?.defaultBranch || git.branch || "требует project policy"}`)
+      .replace("<REPOSITORY_ROUTING>", routing);
   }
   rendered.push(writeSkill(skillName, text));
 }

@@ -161,8 +161,14 @@ function phaseFailures(phase) {
     if (!result || result.status !== "passed") failures.push("deterministic validation has not produced a passed validation-result.json");
   }
   if (phase === "repository-hygiene") {
-    const ignore = exists(".gitignore") ? fs.readFileSync(path.join(root, ".gitignore"), "utf8") : "";
-    if (!/^reusable-agent-system-toolkit\/$/m.test(ignore)) failures.push(".gitignore does not ignore reusable-agent-system-toolkit/");
+    if (exists("workspace.json")) {
+      const boundary = readJson("docs/agent-system/source-boundary-result.json");
+      if (!boundary || boundary.status !== "passed") failures.push("customer source boundary has not produced a passed source-boundary-result.json");
+      if (!exists("bin/agentctl.js")) failures.push("missing bin/agentctl.js workspace runtime");
+    } else {
+      const ignore = exists(".gitignore") ? fs.readFileSync(path.join(root, ".gitignore"), "utf8") : "";
+      if (!/^reusable-agent-system-toolkit\/$/m.test(ignore)) failures.push(".gitignore does not ignore reusable-agent-system-toolkit/");
+    }
   }
   if (phase === "complete") {
     const previous = phases.slice(0, -1).filter((item) => item !== "complete");

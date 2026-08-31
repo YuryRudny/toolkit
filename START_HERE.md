@@ -1,5 +1,21 @@
 # Запуск Toolkit
 
+## Sidecar workspace
+
+Если RAG/skills должны жить отдельно от customer code, создай внутренний artifact repository с `workspace.json`, клонируй toolkit соседней папкой и запускай bootstrap из artifact root:
+
+```text
+Открой workspace.json и toolkit path из него.
+Выполни project-agent-bootstrap/SKILL.md в sidecar-workspace режиме.
+Customer repositories используй только для чтения.
+Все RAG/docs/skills/runtime записывай только в текущий artifact repository.
+До research создай source snapshot, после генерации выполни workspace verify и commit plan.
+```
+
+Для ежедневной работы разработчик один раз выполняет `node bsg-agent-system/bin/agentctl.js install`, а в начале сессии — `node bsg-agent-system/bin/agentctl.js sync`. Доступ идёт через SSH remote из `workspace.json`.
+
+## Project-local repository
+
 Скопируй папку `reusable-agent-system-toolkit/` в корень целевого проекта. Затем открой Codex именно в корне этого проекта и отправь команду:
 
 ```text
@@ -14,10 +30,10 @@
 
 Первое корректное действие агента после этой команды: прочитать `./reusable-agent-system-toolkit/skills/project-agent-bootstrap/SKILL.md` из текущего проекта.
 
-Некорректное поведение:
+Некорректное поведение в project-local режиме:
 
 - искать `$project-agent-bootstrap` через tool/plugin search;
 - искать toolkit в `~/.codex`;
-- брать toolkit из соседнего проекта;
+- брать toolkit из соседнего проекта без sidecar `workspace.json`;
 - брать `node_modules/reusable-agent-system-toolkit`;
 - создавать fallback `.codex/skills` или `codex-skills`, если локальный bootstrap файл не найден.

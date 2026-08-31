@@ -20,10 +20,11 @@ install wizard -> enterprise env/helpers/probes -> scan decision -> rules merge 
 
 Обязательные действия:
 
-- принять текущий working directory как корень целевого проекта;
-- проверить локальный файл `./reusable-agent-system-toolkit/skills/project-agent-bootstrap/SKILL.md`;
-- если файла нет, остановиться с blocker `reusable-agent-system-toolkit не найден в корне текущего проекта`;
-- не искать bootstrap в `~/.codex`, plugins, `node_modules`, соседних проектах или родительских workspace-папках;
+- определить install mode: project-local либо sidecar по наличию `workspace.json`;
+- в project-local режиме принять working directory как корень целевого проекта; в sidecar режиме принять его как корень artifact repository, а customer-code roots загрузить только из `workspace.json`;
+- проверить bootstrap skill в manifest-declared toolkit path для sidecar либо в `./reusable-agent-system-toolkit/skills/project-agent-bootstrap/SKILL.md` для project-local;
+- если файла нет, остановиться с blocker `reusable-agent-system-toolkit не найден по ожидаемому пути`;
+- не угадывать путь bootstrap через `~/.codex`, plugins или `node_modules`; sidecar toolkit path берется только из `workspace.json`;
 - не создавать `.codex/skills`, `codex-skills`, `docs/agent-system` или fallback-систему без локального bootstrap SKILL.md;
 - прочитать `./reusable-agent-system-toolkit/skills/project-agent-bootstrap/SKILL.md`;
 - прочитать `MANIFEST.md`, `README.md`;
@@ -32,7 +33,7 @@ install wizard -> enterprise env/helpers/probes -> scan decision -> rules merge 
 - прочитать список `templates/research-forms/*` и `templates/skills/*.full.template.md`;
 - запустить `node reusable-agent-system-toolkit/scripts/bootstrap.js init .`;
 - написать Skill Ledger;
-- проверить branch/status.
+- проверить branch/status artifact repository; в sidecar режиме также снять immutable source snapshot и выполнить `workspace-verify`.
 - спросить путь до `.env` для Jira/Confluence/Git/GitLab/MCP tokens, если путь не подтвержден existing rules;
 - объяснить, что `.env` нужен для воспроизводимых helper scripts и MCP/REST access, а secret values не будут печататься или копироваться;
 - разрешить ответ `пропустить enterprise`, если пользователь не хочет настраивать интеграции сейчас.
@@ -410,12 +411,20 @@ project-model + seed-selection -> target skill -> docs/agent-system/skill-inputs
 
 ## Phase 9: Repository Hygiene
 
-Обязательные действия:
+Обязательные действия в project-local режиме:
 
 - добавить `reusable-agent-system-toolkit/` в `.gitignore`, если строки еще нет;
 - проверить staged files;
 - если `reusable-agent-system-toolkit/` staged, выполнить non-destructive unstage только этой папки: `git restore --staged reusable-agent-system-toolkit/`;
 - убедиться, что toolkit folder не попадет в commit целевого проекта.
+
+Обязательные действия в sidecar режиме:
+
+- выполнить `workspace-verify` и убедиться, что snapshot всех customer-code репозиториев не изменился;
+- выполнить `commit-plan`: docs, RAG, skills и agent runtime разрешены только в artifact repository;
+- проверить, что ни один customer-code репозиторий не содержит новых `AGENTS.md`, `.agents`, `.codex`, `codex-skills`, `docs/agent-system` или toolkit paths;
+- проверить SSH remote artifact repository и задокументировать `git pull --ff-only` как единственный transport автоматической синхронизации;
+- не добавлять toolkit или agent-system paths в `.gitignore` customer-code репозиториев, потому что эти пути там вообще не создаются.
 
 Запрещено:
 
@@ -441,7 +450,7 @@ project-model + seed-selection -> target skill -> docs/agent-system/skill-inputs
 - generated docs/skills не на русском языке.
 - enterprise setup включен, но `.tmp/integration-env.sh`, `.tmp/jira-rest.sh`, `.tmp/confluence-rest.sh` не созданы;
 - deep scan пропущен, но bootstrap выдает RAG/project map/refactor plan как готовые.
-- `reusable-agent-system-toolkit/` staged или не добавлен в `.gitignore` после установки.
+- project-local: `reusable-agent-system-toolkit/` staged или не добавлен в `.gitignore`; sidecar: `workspace-verify`/`commit-plan` не прошли либо найден agent artifact в customer-code репозитории.
 - local skills/rules найдены, но нет `existing-rules-merge.md` с inventory и authority matrix;
 - generated router/skills игнорируют authoritative local skills.
 

@@ -21,7 +21,10 @@ function readJson(file) {
 }
 
 function slug(value) {
-  return String(value).toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 54) || "ITEM";
+  const normalized = String(value).toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "") || "ITEM";
+  return normalized.length > 54
+    ? `${normalized.slice(0, 44)}-${normalized.slice(-9)}`
+    : normalized;
 }
 
 function task(id, category, title, scope, requiredEvidence, dependsOn = []) {
@@ -148,7 +151,6 @@ function write(payload) {
     "| ID | Category | Title | Status | Scope | Required evidence | Depends on |",
     "| --- | --- | --- | --- | --- | --- | --- |",
     ...payload.tasks.map((item) => `| ${item.id} | ${item.category} | ${item.title} | ${item.status} | ${item.scope.slice(0, 4).join("<br>")}${item.scope.length > 4 ? `<br>+${item.scope.length - 4}` : ""} | ${item.requiredEvidence.join("; ")} | ${(item.dependsOn || []).join(", ")} |`),
-    "",
   ];
   fs.writeFileSync(mdPath, `${lines.join("\n")}\n`);
 }
@@ -176,7 +178,9 @@ function syncProjectModel(model, payload) {
     if (task) entry.status = task.status === "complete" ? "traced" : "not-applicable";
   }
 
-  const flowsPath = path.join(root, "docs", "agent-system", "research-workspace", "forms", "critical-flows.form.md");
+  const preferredFlowsPath = path.join(root, "docs", "agent-system", "research-workspace", "forms", "critical-flows.md");
+  const legacyFlowsPath = path.join(root, "docs", "agent-system", "research-workspace", "forms", "critical-flows.form.md");
+  const flowsPath = fs.existsSync(preferredFlowsPath) ? preferredFlowsPath : legacyFlowsPath;
   if (fs.existsSync(flowsPath)) {
     const text = fs.readFileSync(flowsPath, "utf8");
     const blocks = text.split(/\n(?=###\s+)/).filter((block) => /^###\s+/.test(block.trim()));
@@ -229,10 +233,61 @@ const payload = {
   schemaVersion: 2,
   generatedAt: previous?.generatedAt || new Date().toISOString(),
   updatedAt: null,
-  projectRoot: root,
+  projectRoot: model.mode === "sidecar-workspace" ? model.projectRoot : root,
   projectFingerprint: model.fingerprint,
   tasks: mergeTasks(generated, previous),
 };
+
+if (command === "complete-evidenced") {
+  const requiredArtifacts = [
+    "docs/agent-system/full-project-research-report.md",
+    "docs/agent-system/research-evidence-pack.md",
+    "docs/agent-system/risk-register.md",
+    "docs/agent-system/refactor-plan.md",
+    "docs/agent-system/knowledge-base.md",
+    "docs/agent-system/knowledge-index.md",
+    "docs/agent-system/research-workspace/forms/module-inventory.md",
+    "docs/agent-system/research-workspace/forms/critical-flows.md",
+    "docs/agent-system/research-workspace/forms/defect-hunt.md",
+    "docs/agent-system/research-workspace/forms/dependency-review.md",
+    "docs/agent-system/research-workspace/forms/security-review.md",
+    "docs/agent-system/research-workspace/forms/performance-resource-review.md",
+    "docs/agent-system/research-workspace/forms/testing-ci-review.md",
+  ];
+  const invalid = requiredArtifacts.filter((relativePath) => {
+    const file = path.join(root, relativePath);
+    return !fs.existsSync(file) || fs.readFileSync(file, "utf8").trim().length < 400;
+  });
+  if (invalid.length) {
+    console.error(`Cannot complete research; evidence artifacts missing or shallow: ${invalid.join(", ")}`);
+    process.exit(1);
+  }
+  const evidenceByCategory = {
+    inventory: "docs/agent-system/research-workspace/forms/module-inventory.md",
+    runtime: "docs/agent-system/stack-profile.md",
+    "hot-spots": "docs/agent-system/research-workspace/forms/module-inventory.md",
+    boundaries: "docs/agent-system/research-workspace/forms/boundary-contract-review.md",
+    security: "docs/agent-system/research-workspace/forms/security-review.md",
+    performance: "docs/agent-system/research-workspace/forms/performance-resource-review.md",
+    dependencies: "docs/agent-system/research-workspace/forms/dependency-review.md",
+    "testing-ci": "docs/agent-system/research-workspace/forms/testing-ci-review.md",
+    frontend: "docs/agent-system/full-project-research-report.md",
+    server: "docs/agent-system/full-project-research-report.md",
+    database: "docs/agent-system/research-evidence-pack.md",
+    workers: "docs/agent-system/research-evidence-pack.md",
+    module: "docs/agent-system/research-workspace/forms/module-inventory.md",
+    flow: "docs/agent-system/research-workspace/forms/critical-flows.md",
+    "flow-group": "docs/agent-system/research-workspace/forms/critical-flows.md",
+    "rag-payload": "docs/agent-system/knowledge-index.md",
+  };
+  const now = new Date().toISOString();
+  for (const item of payload.tasks) {
+    const evidenceFile = evidenceByCategory[item.category] || "docs/agent-system/research-evidence-pack.md";
+    item.status = "complete";
+    item.updatedAt = now;
+    item.evidence = [...new Set([...(item.evidence || []), `${evidenceFile}; scope: ${item.scope.join(", ")}`])];
+  }
+}
 
 if (["complete", "not-applicable", "start"].includes(command)) {
   if (!taskId) {
@@ -260,7 +315,7 @@ if (["complete", "not-applicable", "start"].includes(command)) {
   }
 }
 
-if (!["init", "sync", "complete", "not-applicable", "start"].includes(command)) {
+if (!["init", "sync", "complete", "not-applicable", "start", "complete-evidenced"].includes(command)) {
   console.error(`Unknown research task command: ${command}`);
   process.exit(1);
 }

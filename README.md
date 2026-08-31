@@ -1,6 +1,36 @@
 # Reusable Agent System Toolkit
 
-Эта папка - переносимый bootstrap toolkit для создания project-local AI-agent operating system в любом репозитории.
+Эта папка — переносимый bootstrap toolkit для создания project-specific AI-agent operating system. Он поддерживает как установку внутри одного проекта, так и отдельный sidecar-репозиторий для нескольких customer-code репозиториев.
+
+## Sidecar Workspace
+
+Sidecar режим нужен, когда исходный код принадлежит заказчику, а RAG, документация, skills и правила команды должны храниться во внутреннем Git. Artifact repository содержит `workspace.json`; customer repositories и toolkit остаются соседними Git-корнями.
+
+```text
+workspace/
+  AGENTS.md -> bsg-agent-system/AGENTS.md
+  .agents/skills -> ../bsg-agent-system/codex-skills/skills
+  bsg-agent-system/                               # RAG/docs/skills/runtime
+  reusable-agent-system-toolkit-source/           # compiler
+  service-a/                                      # customer code
+  service-b/                                      # customer code
+```
+
+Основной sidecar flow:
+
+```bash
+node ../reusable-agent-system-toolkit-source/scripts/bootstrap.js workspace-snapshot .
+node ../reusable-agent-system-toolkit-source/scripts/bootstrap.js create-workspace-model .
+node ../reusable-agent-system-toolkit-source/scripts/bootstrap.js render-workspace-runtime .
+node bin/agentctl.js install
+node bin/agentctl.js sync
+```
+
+`agentctl sync` делает только `git pull --ff-only` внутреннего agent-system по уже настроенному SSH и обновляет локальные ссылки. Customer repositories он не переключает и не обновляет. `agentctl status` сравнивает их HEAD с RAG snapshot, а `commit-plan` блокирует agent artifacts в Git заказчика.
+
+Ни один sidecar script не должен писать в customer-code repositories. Эта граница проверяется snapshot/verify gate до commit.
+
+## Project-local Mode
 
 Скопируй папку в корень целевого проекта и запусти из этого же проекта path-first командой:
 
@@ -16,7 +46,7 @@
 
 Не запускай через `$project-agent-bootstrap`, если skill не установлен в активной Codex-сессии. Для переносимого toolkit source of truth - файл `./reusable-agent-system-toolkit/skills/project-agent-bootstrap/SKILL.md` внутри целевого репозитория.
 
-Toolkit не является готовым набором project-specific skills. Это методика, по которой агент должен изучить целевой проект, аккуратно смержить существующие правила, создать evidence-based документацию и затем сгенерировать локальные skills под реальный стек, архитектуру, риски и командные conventions.
+Toolkit не является готовым набором project-specific skills. Это методика, по которой агент должен изучить целевой проект или workspace, аккуратно смержить существующие правила, создать evidence-based документацию и затем сгенерировать skills под реальный стек, архитектуру, риски и командные conventions.
 
 ## Compiler Architecture
 
@@ -29,6 +59,7 @@ bootstrap.js -> project-model.json -> topology research tasks -> evidence/RAG
 ```
 
 - `project-model.json` является canonical structured model проекта.
+- В sidecar режиме `workspace.json` задаёт Git boundaries, а source evidence в model/docs адресуется через `repo://<id>/<path>`.
 - `bootstrap-state.json` разрешает только последовательные переходы с prerequisites.
 - `research-tasks.json` строится по реальным modules, entry points и capabilities и синхронизируется с Markdown view.
 - `skill-registry.json` является единственным источником доступных runtime skills для router.
@@ -44,6 +75,7 @@ node reusable-agent-system-toolkit/scripts/bootstrap.js status .
 
 ```bash
 node reusable-agent-system-toolkit/tests/run-tests.js
+node reusable-agent-system-toolkit/tests/run-sidecar-tests.js
 ```
 
 Первый запуск toolkit в новом проекте должен быть full project research-code-review: агент изучает стек, архитектуру, data flow, зависимости, security/privacy, performance/resource leaks, testing/CI, critical flows и risk zones, затем создает полный русскоязычный отчет, risk register, refactor plan и smoke checklist. Быстрый обзор стека не считается успешным bootstrap.
@@ -71,7 +103,7 @@ Research должен идти по воспроизводимому алгор�
 
 Если в скопированном toolkit нет `templates/enterprise-scripts/integration-env.template.sh`, `jira-rest.template.sh` или `confluence-rest.template.sh`, это stale/incomplete toolkit copy. Агент должен остановиться, перечислить missing files и попросить обновить toolkit, а не сочинять helper scripts вручную.
 
-В конце установки bootstrap обязан добавить `reusable-agent-system-toolkit/` в `.gitignore` целевого проекта. Если пользователь случайно застейджил toolkit folder, агент должен выполнить non-destructive unstage только этой папки, например `git restore --staged reusable-agent-system-toolkit/`, не удаляя файлы и не трогая unrelated staged changes.
+В конце project-local установки bootstrap обязан добавить `reusable-agent-system-toolkit/` в `.gitignore` целевого проекта. В sidecar режиме это правило не применяется: toolkit и agent-system являются отдельными внутренними репозиториями, а customer-code репозитории не изменяются вообще.
 
 Важно: если deep scan подтвержден, bootstrap не останавливается за approval между этапами. Агент сначала досконально изучает проект, формирует full project research report и research evidence pack, подтверждает coverage/depth criteria, затем создает RAG базу, project docs и только после этого генерирует skills/maps/modes.
 
@@ -117,7 +149,7 @@ Full bootstrap должен пройти `bootstrap-quality-contract.md`: resear
 - Generated system должна проходить validation checklist: required files, router behavior, research mode, stack-quality gates, enterprise fail-fast и docs artifacts.
 - Full bootstrap должен иметь `bootstrap-quality-report.md` с `Full bootstrap quality: 10/10`; `9/10` считается repair required, а не успехом.
 - Enterprise setup должен создавать helper scripts на диске, хранить абсолютный env path только в ignored `.tmp/integration-env.sh`, а required variables/winning auth mode/probes записывать в access-policy skills. Runtime fallback после установки запрещен: агент использует записанный способ или останавливается с blocker.
-- Toolkit folder не должен попадать в commit целевого проекта: `reusable-agent-system-toolkit/` должен быть в `.gitignore` и не должен оставаться staged.
+- В project-local режиме toolkit folder не должен попадать в commit целевого проекта. В sidecar режиме toolkit и agent-system хранятся только во внутренних repositories, а customer Git остаётся чистым от agent artifacts.
 - Research evidence pack и passed coverage/depth validation обязательны перед генерацией skills/RAG.
 - Последующая работа должна начинаться с knowledge base/index и только потом читать deep docs/source по scope.
 

@@ -29,7 +29,7 @@ Bootstrap считается успешным только если generated sy
 - Existing rules merge doc, если existing rules/local skills найдены.
 - Enterprise integrations doc, если проект использует Jira/Confluence/Git/GitLab.
 - `.tmp/integration-env.sh`, `.tmp/jira-rest.sh`, `.tmp/confluence-rest.sh`, если Jira/Confluence setup включен.
-- `.gitignore` содержит `reusable-agent-system-toolkit/`.
+- В project-local режиме `.gitignore` содержит `reusable-agent-system-toolkit/`; в sidecar режиме `workspace-verify` подтверждает отсутствие agent artifacts во всех customer-code репозиториях.
 - Generated system validation checklist copied or referenced.
 - Bootstrap acceptance checklist copied or referenced.
 - Bootstrap quality report exists: `docs/agent-system/bootstrap-quality-report.md`.
@@ -78,7 +78,7 @@ Bootstrap считается успешным только если generated sy
 - Dependency review содержит manifest/lockfile evidence, usage evidence, audit freshness и heavy/rare/security-sensitive candidates.
 - Stack-quality gates подключены к pre-change/review.
 - Enterprise access не имеет guessing fallback.
-- `reusable-agent-system-toolkit/` не staged и не попадет в commit целевого проекта.
+- В project-local режиме `reusable-agent-system-toolkit/` не staged; в sidecar режиме `commit-plan` разрешает docs/skills только в artifact repository и блокирует agent artifacts в customer-code репозиториях.
 - Gaps/blockers записаны явно.
 - `bootstrap-quality-report.md` содержит `Full bootstrap quality: 10/10` для full install.
 - Каждая категория из `bootstrap-quality-contract.md` имеет score `10/10` или bootstrap не принят.
@@ -124,8 +124,8 @@ Bootstrap считается успешным только если generated sy
 - Env path/token/probe failed, но bootstrap продолжил как будто enterprise access готов.
 - Deep scan skipped без предупреждения о потере RAG/project map/refactor plan/concrete skills.
 - Degraded install выдан как полноценный bootstrap.
-- `.gitignore` не содержит `reusable-agent-system-toolkit/`.
-- `reusable-agent-system-toolkit/` остался staged после установки.
+- В project-local режиме `.gitignore` не содержит `reusable-agent-system-toolkit/` или toolkit остался staged.
+- В sidecar режиме `workspace-verify`/`commit-plan` не выполнены либо обнаружили изменения agent artifacts в customer-code репозитории.
 - Есть placeholder markers: `TODO`, `TBD`, `<...>`, "заполнить позже" в active skills/docs.
 
 ## Result Format
