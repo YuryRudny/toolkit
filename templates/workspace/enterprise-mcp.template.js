@@ -282,7 +282,11 @@ async function requestJson(service, target, options = {}) {
     });
   } catch (error) {
     const category = error.name === "AbortError" ? "timeout" : "transport";
-    throw new IntegrationError(service.id, category, `${service.id} request failed: ${error.message}`);
+    const cause = error.cause;
+    const causeDetail = cause
+      ? [cause.code, cause.message].filter(Boolean).join(": ")
+      : "";
+    throw new IntegrationError(service.id, category, `${service.id} request failed: ${error.message}${causeDetail ? ` (${causeDetail})` : ""}`);
   } finally {
     clearTimeout(timer);
   }
@@ -302,7 +306,9 @@ async function requestJson(service, target, options = {}) {
   if (text) {
     try { payload = JSON.parse(text); }
     catch {
-      throw new IntegrationError(service.id, "unexpected-response", `${service.id} returned non-JSON data.`, response.status);
+      if (response.ok) {
+        throw new IntegrationError(service.id, "unexpected-response", `${service.id} returned non-JSON data.`, response.status);
+      }
     }
   }
   if (!response.ok) {

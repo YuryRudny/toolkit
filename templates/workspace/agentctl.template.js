@@ -107,15 +107,50 @@ function integrationConfigPath(manifest) {
   return output;
 }
 
+function localIntegrationConfig(manifest) {
+  const configFile = integrationConfigPath(manifest);
+  if (!fs.existsSync(configFile)) {
+    fail("Enterprise integrations are not configured. Run integrations configure with the user-provided env path.");
+  }
+  try { return JSON.parse(fs.readFileSync(configFile, "utf8")); }
+  catch (error) { fail(`Cannot read local integration config: ${error.message}`); }
+}
+
+function readOptionalCaFile(envFile) {
+  const lines = fs.readFileSync(envFile, "utf8").split(/\r?\n/);
+  const line = lines.find((item) => /^(?:\s*export\s+)?ENTERPRISE_CA_FILE\s*=/.test(item));
+  if (!line) return null;
+  let value = line.replace(/^(?:\s*export\s+)?ENTERPRISE_CA_FILE\s*=\s*/, "").trim();
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    value = value.slice(1, -1);
+  } else {
+    value = value.replace(/\s+#.*$/, "").trim();
+  }
+  if (!value) return null;
+  if (!path.isAbsolute(value)) fail("ENTERPRISE_CA_FILE must be an absolute path.");
+  let stat;
+  try { stat = fs.statSync(value); }
+  catch (error) { fail(`Cannot read ENTERPRISE_CA_FILE: ${error.message}`); }
+  if (!stat.isFile()) fail("ENTERPRISE_CA_FILE must point to a regular PEM file.");
+  fs.accessSync(value, fs.constants.R_OK);
+  return path.resolve(value);
+}
+
+function enterpriseChildEnv(manifest) {
+  const localConfig = localIntegrationConfig(manifest);
+  return localConfig.caFile
+    ? { ...process.env, NODE_EXTRA_CA_CERTS: localConfig.caFile }
+    : process.env;
+}
+
 function runEnterprise(manifest, args, options = {}) {
   if (!fs.existsSync(enterpriseServerPath)) fail(`Missing enterprise MCP runtime: ${enterpriseServerPath}`);
   const localConfigPath = integrationConfigPath(manifest);
-  if (!fs.existsSync(localConfigPath)) {
-    fail("Enterprise integrations are not configured. Run integrations configure with the user-provided env path.");
-  }
+  localIntegrationConfig(manifest);
   const result = spawnSync(process.execPath, [enterpriseServerPath, "--config", localConfigPath, ...args], {
     cwd: artifactRoot,
     encoding: "utf8",
+    env: enterpriseChildEnv(manifest),
     stdio: options.capture ? ["ignore", "pipe", "pipe"] : "inherit",
   });
   if (options.capture) return result;
@@ -132,6 +167,7 @@ function parseChildJson(result, action) {
 function installEnterpriseMcp(manifest) {
   const settings = integrationSettings(manifest);
   const localConfigPath = integrationConfigPath(manifest);
+  const localConfig = localIntegrationConfig(manifest);
   const codexBin = process.env.BSG_CODEX_BIN || "codex";
   const existing = spawnSync(codexBin, ["mcp", "get", settings.mcpServerName, "--json"], { encoding: "utf8" });
   if (existing.error?.code === "ENOENT") fail("Codex CLI is not available; cannot install the enterprise MCP server.");
@@ -139,10 +175,10 @@ function installEnterpriseMcp(manifest) {
     const removed = spawnSync(codexBin, ["mcp", "remove", settings.mcpServerName], { encoding: "utf8", stdio: "inherit" });
     if (removed.status !== 0) fail(`Cannot replace existing MCP server ${settings.mcpServerName}.`);
   }
-  const added = spawnSync(codexBin, [
-    "mcp", "add", settings.mcpServerName, "--",
-    process.execPath, enterpriseServerPath, "--config", localConfigPath,
-  ], { encoding: "utf8", stdio: "inherit" });
+  const addArguments = ["mcp", "add"];
+  if (localConfig.caFile) addArguments.push("--env", `NODE_EXTRA_CA_CERTS=${localConfig.caFile}`);
+  addArguments.push(settings.mcpServerName, "--", process.execPath, enterpriseServerPath, "--config", localConfigPath);
+  const added = spawnSync(codexBin, addArguments, { encoding: "utf8", stdio: "inherit" });
   if (added.status !== 0) fail(`Cannot install MCP server ${settings.mcpServerName}.`);
   console.log(`Codex MCP server installed: ${settings.mcpServerName}`);
 }
@@ -162,12 +198,14 @@ function configureIntegrations() {
   if ((stat.mode & 0o077) !== 0) {
     console.error("Warning: env file is readable by group or other users; chmod 600 is recommended.");
   }
+  const caFile = readOptionalCaFile(envFile);
   const localConfigPath = integrationConfigPath(workspace.manifest);
   fs.mkdirSync(path.dirname(localConfigPath), { recursive: true, mode: 0o700 });
   fs.writeFileSync(localConfigPath, `${JSON.stringify({
     schemaVersion: 1,
     workspaceId: workspace.manifest.workspaceId,
     envFile,
+    ...(caFile ? { caFile } : {}),
     configuredAt: new Date().toISOString(),
   }, null, 2)}\n`, { mode: 0o600 });
   fs.chmodSync(localConfigPath, 0o600);

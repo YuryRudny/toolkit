@@ -29,6 +29,8 @@ node bin/agentctl.js sync
 
 `agentctl integrations configure` сохраняет только путь до env в ignored `.local/integrations.json`, устанавливает dependency-free STDIO MCP в пользовательский Codex config и выполняет read-only probes Jira, Confluence, GitLab и Figma. Значения токенов не копируются в Git или MCP config. `agentctl sync` делает только `git pull --ff-only` внутреннего agent-system по уже настроенному SSH и обновляет локальные ссылки. Customer repositories он не переключает и не обновляет. `agentctl status` сравнивает их HEAD с RAG snapshot, а `commit-plan` блокирует agent artifacts в Git заказчика.
 
+Для внутренних HTTPS с корпоративным CA env может задать `ENTERPRISE_CA_FILE=/absolute/path/company-ca.pem`. Локальный MCP получает его через `NODE_EXTRA_CA_CERTS`; проверка сертификата никогда не отключается.
+
 Ни один sidecar script не должен писать в customer-code repositories. Эта граница проверяется snapshot/verify gate до commit.
 
 ## Project-local Mode

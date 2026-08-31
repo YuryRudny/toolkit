@@ -128,6 +128,8 @@ try {
   assert.equal(status.knowledgeStatus, "current");
 
   const envFile = path.join(workspaceRoot, "developer.env");
+  const caFile = path.join(workspaceRoot, "company-ca.pem");
+  write(workspaceRoot, "company-ca.pem", "-----BEGIN CERTIFICATE-----\nfixture\n-----END CERTIFICATE-----\n");
   write(workspaceRoot, "developer.env", [
     "JIRA_BASE_URL=https://jira.example.test",
     "JIRA_TOKEN=jira-secret",
@@ -136,11 +138,13 @@ try {
     "FIGMA_TOKEN=figma-secret",
     "GITLAB_BASE_URL=https://git.example.test",
     "GITLAB_TOKEN=gitlab-secret",
+    `ENTERPRISE_CA_FILE=${caFile}`,
     "",
   ].join("\n"));
   command(process.execPath, [agentctl, "integrations", "configure", envFile, "--skip-mcp-install", "--skip-probe"], artifactRoot);
   const localIntegration = readArtifactJson(".local/integrations.json");
   assert.equal(localIntegration.envFile, envFile);
+  assert.equal(localIntegration.caFile, caFile);
   assert(!JSON.stringify(localIntegration).includes("jira-secret"));
   const integrationStatus = JSON.parse(command(process.execPath, [agentctl, "integrations", "status"], artifactRoot).stdout);
   assert(integrationStatus.services.some((item) => item.kind === "figma" && item.configured));
@@ -159,6 +163,7 @@ try {
   assert(addCall);
   assert(addCall.includes(fs.realpathSync(enterpriseMcp)), JSON.stringify(addCall));
   assert(addCall.includes(fs.realpathSync(path.join(artifactRoot, ".local", "integrations.json"))), JSON.stringify(addCall));
+  assert(addCall.includes(`NODE_EXTRA_CA_CERTS=${caFile}`), JSON.stringify(addCall));
   assert(!JSON.stringify(addCall).includes("jira-secret"));
   assert.equal(command("git", ["status", "--porcelain=v1", "-uall"], apiRoot).stdout, baselineApiStatus);
   assert.equal(command("git", ["status", "--porcelain=v1", "-uall"], uiRoot).stdout, baselineUiStatus);

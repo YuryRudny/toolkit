@@ -37,6 +37,7 @@ GITLAB_TOKEN=...
 - `FIGMA_AUTH_MODE=pat|bearer`; PAT по умолчанию передаётся через `X-Figma-Token`.
 - `FIGMA_API_BASE_URL` только для корпоративного API proxy; default — `https://api.figma.com`.
 - Несколько GitLab: `GITLAB_ROCKET_BASE_URL` + `GITLAB_ROCKET_TOKEN`, `GITLAB_CUSTOMER_BASE_URL` + `GITLAB_CUSTOMER_TOKEN` и другие пары `GITLAB_<NAME>_BASE_URL/TOKEN`.
+- Внутренний корпоративный CA: `ENTERPRISE_CA_FILE=/absolute/path/company-ca.pem`. Путь сохраняется только в ignored local config и передаётся Node как `NODE_EXTRA_CA_CERTS`; TLS verification не отключается.
 
 Для всех четырёх видов интеграций нужны URL и токены с read scope. Figma file context требует `file_content:read`; variables дополнительно требуют `file_variables:read` и поддерживаемый Figma plan.
 

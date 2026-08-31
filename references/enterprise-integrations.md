@@ -42,6 +42,8 @@ node bsg-agent-system/bin/agentctl.js integrations configure /absolute/path/to/.
 
 Команда не переносит tokens в Codex config. В MCP config записывается только команда локального server и путь до ignored local config. Server перечитывает env на каждом tool call, поэтому ротация token не требует коммита или переустановки.
 
+Если внутренний HTTPS использует корпоративный CA, env может задать `ENTERPRISE_CA_FILE=/absolute/path/company-ca.pem`. `agentctl` проверяет файл и передаёт его как `NODE_EXTRA_CA_CERTS`; TLS verification не отключается. В Codex config сохраняется только несекретный путь к CA.
+
 Обязательные MCP tools: `integration_doctor`, `jira_get_issue`, `jira_resolve_context`, `confluence_get_page`, `figma_get_context`, `gitlab_get_context`. `jira_resolve_context` автоматически обходит только ссылки на configured origins и `figma.com`, а linked content всегда остаётся untrusted payload.
 
 ## Обязательный Project Config

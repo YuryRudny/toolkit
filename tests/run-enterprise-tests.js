@@ -33,6 +33,11 @@ function json(response, status, payload) {
   response.end(body);
 }
 
+function textResponse(response, status, body) {
+  response.writeHead(status, { "Content-Type": "text/html", "Content-Length": Buffer.byteLength(body) });
+  response.end(body);
+}
+
 function run(args, expectedStatus = 0) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [serverScript, "--config", configFile, "--allow-insecure-localhost", ...args], {
@@ -93,7 +98,7 @@ async function main() {
   let figmaBase;
   let gitlabBase;
   const jiraBase = await listen((request, response) => {
-    if (request.headers.authorization !== "Bearer jira-secret") return json(response, 401, { message: "invalid jira token" });
+    if (request.headers.authorization !== "Bearer jira-secret") return textResponse(response, 401, "<html>unauthorized</html>");
     if (request.url.startsWith("/rest/api/2/myself")) return json(response, 200, { name: "fixture-user" });
     if (request.url.startsWith("/rest/api/2/issue/BSG-42")) {
       return json(response, 200, {
@@ -207,7 +212,9 @@ async function main() {
 
   writeEnv("wrong-secret-value");
   const failed = await run(["--doctor"], 1);
-  assert.equal(JSON.parse(failed.stdout).status, "failed");
+  const failedDoctor = JSON.parse(failed.stdout);
+  assert.equal(failedDoctor.status, "failed");
+  assert.equal(failedDoctor.results.find((item) => item.kind === "jira").error.category, "authentication-or-permission");
   assert(!failed.stdout.includes("wrong-secret-value"));
   assert(!failed.stderr.includes("wrong-secret-value"));
 
