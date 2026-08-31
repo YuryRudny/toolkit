@@ -40,7 +40,7 @@ GITLAB_TOKEN=...
 - Native Git fallback: `GITLAB_<NAME>_GIT_USERNAME` + `GITLAB_<NAME>_GIT_TOKEN`. Если они не заданы, helper использует соответствующие `GITLAB_<NAME>_USERNAME/TOKEN`. Системный credential helper всегда имеет приоритет.
 - Внутренний корпоративный CA: `ENTERPRISE_CA_FILE=/absolute/path/company-ca.pem`. Путь сохраняется только в ignored local config и передаётся Node как `NODE_EXTRA_CA_CERTS`; TLS verification не отключается.
 
-Для всех четырёх видов интеграций нужны URL и токены с read scope. Figma file context требует `file_content:read`; variables дополнительно требуют `file_variables:read` и поддерживаемый Figma plan.
+Jira, Confluence и Figma API требуют URL/токены с read scope. GitLab REST token опционален и нужен только для чтения project/MR/issue/commit metadata через MCP. Figma file context требует `file_content:read`; variables дополнительно требуют `file_variables:read` и поддерживаемый Figma plan.
 
 GitLab REST API и Git code transport — разные проверки. API нужен для чтения project/MR/issue/commit links. Clone/fetch/push выполняются нативным Git через системный credential helper и локальный env fallback; проверка — `agentctl integrations git-doctor`.
 

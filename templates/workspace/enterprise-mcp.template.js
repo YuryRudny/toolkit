@@ -186,7 +186,13 @@ function createServices(runtime) {
       insecureTls: Boolean(baseUrl && (runtime.localConfig.insecureTlsOrigins || []).includes(new URL(baseUrl).origin)),
     });
   }
-  return { jira, confluence, figma, gitlab };
+  return {
+    jira,
+    confluence,
+    figma,
+    gitlab,
+    runtimeRequiredKinds: runtime.localConfig.requiredServices || ["jira", "confluence", "figma"],
+  };
 }
 
 function serviceConfigured(service) {
@@ -641,11 +647,12 @@ function classifyLink(services, value) {
 async function resolveWorkItem(services, issueKey, maxLinks = 12) {
   const issue = await getJiraIssue(services, issueKey);
   const queue = issue.links.map((url) => ({ url, depth: 0 }));
+  const linkLimit = Math.max(1, Math.min(Number(maxLinks) || 12, 30));
   const visited = new Set();
   const contexts = [];
   const errors = [];
   const ignoredLinks = [];
-  while (queue.length && visited.size < Math.max(1, Math.min(Number(maxLinks) || 12, 30))) {
+  while (queue.length && contexts.length + errors.length < linkLimit) {
     const item = queue.shift();
     if (!item?.url || visited.has(item.url)) continue;
     visited.add(item.url);
@@ -697,10 +704,11 @@ async function doctor(services) {
       results.push({ id: probe.service.id, kind: probe.service.kind, status: "failed", baseUrl: probe.service.baseUrl, error: publicError(error) });
     }
   }
-  const requiredKinds = ["jira", "confluence", "figma", "gitlab"];
+  const requiredKinds = services.runtimeRequiredKinds || ["jira", "confluence", "figma"];
   const missingKinds = requiredKinds.filter((kind) => !results.some((item) => item.kind === kind && item.status !== "not-configured"));
+  const failedRequired = results.some((item) => requiredKinds.includes(item.kind) && item.status === "failed");
   return {
-    status: results.some((item) => item.status === "failed") || missingKinds.length ? "failed" : "passed",
+    status: failedRequired || missingKinds.length ? "failed" : "passed",
     results,
     missingKinds,
   };
@@ -796,7 +804,7 @@ async function runCli() {
       configPath: runtime.localConfigPath,
       envFileExists: fs.existsSync(runtime.envFile),
       services: serviceSummary(services),
-      requiredKinds: ["jira", "confluence", "gitlab", "figma"],
+      requiredKinds: services.runtimeRequiredKinds,
     }, null, 2));
     return;
   }

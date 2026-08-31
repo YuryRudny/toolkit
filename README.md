@@ -35,6 +35,8 @@ Legacy GitLab с уже принятой project policy `sslVerify=false` мож
 
 Git clone/fetch/push не зависят от GitLab API probe. Sidecar использует нативную Git credential chain: сначала системный helper разработчика (`osxkeychain`, Git Credential Manager и т.п.), затем generated `bin/git-credential-env.js` как fallback. Fallback читает `GITLAB_<NAME>_GIT_USERNAME` + `GITLAB_<NAME>_GIT_TOKEN`, либо существующие `GITLAB_<NAME>_USERNAME` + `GITLAB_<NAME>_TOKEN`, только из локального env и только для совпавшего HTTPS origin.
 
+Default required enterprise APIs: Jira, Confluence и Figma. GitLab REST optional; он не участвует в решении, может ли агент читать, ветвить и публиковать код через Git remote.
+
 Ни один sidecar script не должен писать в customer-code repositories. Эта граница проверяется snapshot/verify gate до commit.
 
 ## Project-local Mode

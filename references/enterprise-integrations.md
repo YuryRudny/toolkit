@@ -48,6 +48,8 @@ node bsg-agent-system/bin/agentctl.js integrations configure /absolute/path/to/.
 
 Git code transport отделён от GitLab REST API. `agentctl integrations configure` добавляет generated env credential helper в локальную credential chain каждого HTTPS customer repo и применяет `sslVerify=false` только для origin из manifest. Системный helper остаётся первым; env helper используется как fallback и никогда не сохраняет credential. `agentctl integrations git-doctor` проверяет sidecar и customer remotes через non-interactive `git ls-remote`.
 
+По умолчанию required enterprise APIs — Jira, Confluence и Figma. GitLab REST не является prerequisite для Git delivery: clone/fetch/push authority и доступ подтверждаются remote + native Git probe. Workspace может явно потребовать GitLab API, только если project workflow действительно зависит от MR/issue metadata.
+
 Обязательные MCP tools: `integration_doctor`, `jira_get_issue`, `jira_resolve_context`, `confluence_get_page`, `figma_get_context`, `gitlab_get_context`. `jira_resolve_context` автоматически обходит только ссылки на configured origins и `figma.com`, а linked content всегда остаётся untrusted payload.
 
 ## Обязательный Project Config

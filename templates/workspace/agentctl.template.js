@@ -118,7 +118,7 @@ function integrationSettings(manifest) {
   return {
     mcpServerName,
     localConfig: settings.localConfig || ".local/integrations.json",
-    requiredServices: settings.requiredServices || ["jira", "confluence", "gitlab", "figma"],
+    requiredServices: settings.requiredServices || ["jira", "confluence", "figma"],
     insecureTlsOrigins,
   };
 }
@@ -223,13 +223,15 @@ function configureIntegrations() {
     console.error("Warning: env file is readable by group or other users; chmod 600 is recommended.");
   }
   const caFile = readOptionalCaFile(envFile);
-  const insecureTlsOrigins = integrationSettings(workspace.manifest).insecureTlsOrigins;
+  const settings = integrationSettings(workspace.manifest);
+  const insecureTlsOrigins = settings.insecureTlsOrigins;
   const localConfigPath = integrationConfigPath(workspace.manifest);
   fs.mkdirSync(path.dirname(localConfigPath), { recursive: true, mode: 0o700 });
   fs.writeFileSync(localConfigPath, `${JSON.stringify({
     schemaVersion: 1,
     workspaceId: workspace.manifest.workspaceId,
     envFile,
+    requiredServices: settings.requiredServices,
     ...(caFile ? { caFile } : {}),
     ...(insecureTlsOrigins.length ? { insecureTlsOrigins } : {}),
     configuredAt: new Date().toISOString(),

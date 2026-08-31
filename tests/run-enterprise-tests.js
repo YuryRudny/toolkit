@@ -101,6 +101,7 @@ async function main() {
     if (request.headers.authorization !== "Bearer jira-secret") return textResponse(response, 401, "<html>unauthorized</html>");
     if (request.url.startsWith("/rest/api/2/myself")) return json(response, 200, { name: "fixture-user" });
     if (request.url.startsWith("/rest/api/2/issue/BSG-42")) {
+      const jiraNoise = Array.from({ length: 15 }, (_, index) => `${jiraBase}/rest/api/2/noise/${index}`).join(" ");
       return json(response, 200, {
         id: "42",
         key: "BSG-42",
@@ -111,7 +112,7 @@ async function main() {
           issuetype: { name: "Story" },
           assignee: { displayName: "Developer" },
           reporter: { displayName: "Product" },
-          description: `${confluenceBase}/spaces/BSG/pages/123/Application+specification ${figmaBase.replace(/^http:\/\/127\.0\.0\.1:\d+$/, "https://www.figma.com")}/design/FILE123/Screen?node-id=1-2 ${gitlabBase}/group/project/-/merge_requests/7`,
+          description: `${jiraNoise} ${confluenceBase}/spaces/BSG/pages/123/Application+specification ${figmaBase.replace(/^http:\/\/127\.0\.0\.1:\d+$/, "https://www.figma.com")}/design/FILE123/Screen?node-id=1-2 ${gitlabBase}/group/project/-/merge_requests/7`,
           comment: { comments: [] },
         },
         renderedFields: {},

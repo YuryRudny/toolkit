@@ -149,6 +149,7 @@ try {
   const localIntegration = readArtifactJson(".local/integrations.json");
   assert.equal(localIntegration.envFile, envFile);
   assert.equal(localIntegration.caFile, caFile);
+  assert.deepEqual(localIntegration.requiredServices, ["jira", "confluence", "gitlab", "figma"]);
   assert.deepEqual(localIntegration.insecureTlsOrigins, ["https://git.example.test"]);
   assert(!JSON.stringify(localIntegration).includes("jira-secret"));
   const apiCredentialHelpers = command("git", ["config", "--local", "--get-all", "credential.helper"], apiRoot).stdout;
