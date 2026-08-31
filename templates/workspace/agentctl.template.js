@@ -92,10 +92,20 @@ function integrationSettings(manifest) {
   const settings = manifest.integrations || {};
   const mcpServerName = settings.mcpServerName || `${manifest.workspaceId}-enterprise`;
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(mcpServerName)) fail(`Invalid integrations.mcpServerName: ${mcpServerName}`);
+  const insecureTlsOrigins = (settings.insecureTlsOrigins || []).map((value) => {
+    let url;
+    try { url = new URL(value); }
+    catch { fail(`Invalid integrations.insecureTlsOrigins value: ${value}`); }
+    if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash || url.username || url.password) {
+      fail(`integrations.insecureTlsOrigins must contain HTTPS origins without path: ${value}`);
+    }
+    return url.origin;
+  });
   return {
     mcpServerName,
     localConfig: settings.localConfig || ".local/integrations.json",
     requiredServices: settings.requiredServices || ["jira", "confluence", "gitlab", "figma"],
+    insecureTlsOrigins,
   };
 }
 
@@ -199,6 +209,7 @@ function configureIntegrations() {
     console.error("Warning: env file is readable by group or other users; chmod 600 is recommended.");
   }
   const caFile = readOptionalCaFile(envFile);
+  const insecureTlsOrigins = integrationSettings(workspace.manifest).insecureTlsOrigins;
   const localConfigPath = integrationConfigPath(workspace.manifest);
   fs.mkdirSync(path.dirname(localConfigPath), { recursive: true, mode: 0o700 });
   fs.writeFileSync(localConfigPath, `${JSON.stringify({
@@ -206,6 +217,7 @@ function configureIntegrations() {
     workspaceId: workspace.manifest.workspaceId,
     envFile,
     ...(caFile ? { caFile } : {}),
+    ...(insecureTlsOrigins.length ? { insecureTlsOrigins } : {}),
     configuredAt: new Date().toISOString(),
   }, null, 2)}\n`, { mode: 0o600 });
   fs.chmodSync(localConfigPath, 0o600);

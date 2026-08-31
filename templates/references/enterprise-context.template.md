@@ -53,6 +53,7 @@ GITLAB_TOKEN=...
 ## Security Boundary
 
 - Credentials отправляются только на configured HTTPS origin и base path.
+- TLS verification включена по умолчанию. Для явно перечисленного в workspace `insecureTlsOrigins` GitLab-origin допускается scoped compatibility transport; исключение не применяется к Jira, Confluence, Figma или другим GitLab origins и отображается в status.
 - HTTP и cross-origin requests запрещены; redirects не выполняются.
 - Ответы ограничены по размеру и времени.
 - Ошибки очищаются от bearer/basic/PAT values.

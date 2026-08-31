@@ -45,6 +45,9 @@ forbidPattern("templates/enterprise-scripts/confluence-rest.template.sh", /URL="
 requirePattern("templates/workspace/enterprise-mcp.template.js", /resolveServiceUrl/, "enterprise MCP lacks configured-origin URL enforcement");
 requirePattern("templates/workspace/enterprise-mcp.template.js", /redirect:\s*"manual"/, "enterprise MCP can follow credential-bearing redirects");
 requirePattern("templates/workspace/enterprise-mcp.template.js", /sanitizeMessage/, "enterprise MCP lacks secret-safe error handling");
+requirePattern("templates/workspace/enterprise-mcp.template.js", /rejectUnauthorized: false/, "enterprise MCP lacks the documented scoped TLS compatibility path");
+requirePattern("templates/workspace/enterprise-mcp.template.js", /runtime\.localConfig\.insecureTlsOrigins/, "TLS compatibility path is not restricted by local configured origins");
+forbidPattern("templates/workspace/enterprise-mcp.template.js", /NODE_TLS_REJECT_UNAUTHORIZED/, "enterprise MCP disables TLS verification process-wide");
 requirePattern("templates/workspace/enterprise-mcp.template.js", /trustBoundary/, "enterprise MCP does not mark external content as untrusted");
 forbidPattern("templates/workspace/enterprise-mcp.template.js", /console\.log\([^\n]*(?:token|headers|env)\b/i, "enterprise MCP can print secret-bearing runtime state");
 

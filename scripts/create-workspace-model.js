@@ -165,8 +165,9 @@ const model = {
       ? {
           enabled: true,
           mcpServerName: workspace.manifest.integrations.mcpServerName || `${workspace.manifest.workspaceId}-enterprise`,
-          requiredServices: workspace.manifest.integrations.requiredServices || ["jira", "confluence", "gitlab", "figma"],
-          credentialSource: "machine-local-env",
+      requiredServices: workspace.manifest.integrations.requiredServices || ["jira", "confluence", "gitlab", "figma"],
+      insecureTlsOrigins: workspace.manifest.integrations.insecureTlsOrigins || [],
+      credentialSource: "machine-local-env",
           secretValuesStored: false,
         }
       : { enabled: false },

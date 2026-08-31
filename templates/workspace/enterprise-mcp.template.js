@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require("fs");
+const https = require("https");
 const path = require("path");
 const readline = require("readline");
 
@@ -175,12 +176,14 @@ function createServices(runtime) {
     pairs.set(label, { base: value, token: first(env, `GITLAB_${match[1]}_TOKEN`) });
   }
   for (const [label, pair] of pairs) {
+    const baseUrl = normalizeBaseUrl(pair.base, runtime, `gitlab-${label}`);
     gitlab.push({
       id: `gitlab-${label}`,
       kind: "gitlab",
       label,
-      baseUrl: normalizeBaseUrl(pair.base, runtime, `gitlab-${label}`),
+      baseUrl,
       headers: pair.token ? { "PRIVATE-TOKEN": pair.token } : null,
+      insecureTls: Boolean(baseUrl && (runtime.localConfig.insecureTlsOrigins || []).includes(new URL(baseUrl).origin)),
     });
   }
   return { jira, confluence, figma, gitlab };
@@ -197,6 +200,7 @@ function serviceSummary(services) {
     kind: service.kind,
     configured: serviceConfigured(service),
     baseUrl: service.baseUrl || null,
+    tlsVerification: service.insecureTls ? "disabled-project-exception" : "enabled",
     credentialValuesStored: false,
   }));
 }
@@ -263,6 +267,42 @@ function resolveServiceUrl(service, target) {
   return url;
 }
 
+function requestWithScopedInsecureTls(service, url, options) {
+  return new Promise((resolve, reject) => {
+    const maxBytes = options.maxBytes || DEFAULT_MAX_BYTES;
+    const request = https.request(url, {
+      method: "GET",
+      headers: { Accept: "application/json", ...service.headers },
+      rejectUnauthorized: false,
+    }, (response) => {
+      const chunks = [];
+      let bytes = 0;
+      response.on("data", (chunk) => {
+        bytes += chunk.length;
+        if (bytes > maxBytes) {
+          request.destroy(new IntegrationError(service.id, "response-too-large", `${service.id} response exceeds the configured size limit.`, response.statusCode));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on("end", () => resolve({
+        status: response.statusCode || 0,
+        statusText: response.statusMessage || "",
+        ok: (response.statusCode || 0) >= 200 && (response.statusCode || 0) < 300,
+        headers: { get: (name) => response.headers[String(name).toLowerCase()] || null },
+        text: async () => Buffer.concat(chunks).toString("utf8"),
+      }));
+    });
+    request.setTimeout(options.timeoutMs || DEFAULT_TIMEOUT_MS, () => {
+      const error = new Error("request timed out");
+      error.name = "AbortError";
+      request.destroy(error);
+    });
+    request.on("error", reject);
+    request.end();
+  });
+}
+
 async function requestJson(service, target, options = {}) {
   const url = resolveServiceUrl(service, target);
   if (options.query) {
@@ -274,12 +314,14 @@ async function requestJson(service, target, options = {}) {
   const timer = setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_TIMEOUT_MS);
   let response;
   try {
-    response = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json", ...service.headers },
-      redirect: "manual",
-      signal: controller.signal,
-    });
+    response = service.insecureTls
+      ? await requestWithScopedInsecureTls(service, url, options)
+      : await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json", ...service.headers },
+        redirect: "manual",
+        signal: controller.signal,
+      });
   } catch (error) {
     const category = error.name === "AbortError" ? "timeout" : "transport";
     const cause = error.cause;

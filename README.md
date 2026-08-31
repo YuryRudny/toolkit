@@ -31,6 +31,8 @@ node bin/agentctl.js sync
 
 Для внутренних HTTPS с корпоративным CA env может задать `ENTERPRISE_CA_FILE=/absolute/path/company-ca.pem`. Локальный MCP получает его через `NODE_EXTRA_CA_CERTS`; проверка сертификата никогда не отключается.
 
+Legacy GitLab с уже принятой project policy `sslVerify=false` может быть указан exact origin в `workspace.json` → `integrations.insecureTlsOrigins`. Исключение действует только на этот GitLab origin и не меняет TLS Jira, Confluence, Figma или других GitLab instances.
+
 Ни один sidecar script не должен писать в customer-code repositories. Эта граница проверяется snapshot/verify gate до commit.
 
 ## Project-local Mode

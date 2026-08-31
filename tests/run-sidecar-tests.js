@@ -74,6 +74,7 @@ try {
       mcpServerName: "fixture-enterprise",
       localConfig: ".local/integrations.json",
       requiredServices: ["jira", "confluence", "gitlab", "figma"],
+      insecureTlsOrigins: ["https://git.example.test"],
     },
     repositories: [
       { id: "api-service", role: "customer-code", path: "../api-service", remote: apiRemote, defaultBranch: "main" },
@@ -95,6 +96,7 @@ try {
   assert.deepEqual(model.workspace.repositories.map((repo) => repo.id), ["api-service", "web-client"]);
   assert.equal(model.integrations.enterprise.mcpServerName, "fixture-enterprise");
   assert.deepEqual(model.integrations.enterprise.requiredServices, ["jira", "confluence", "gitlab", "figma"]);
+  assert.deepEqual(model.integrations.enterprise.insecureTlsOrigins, ["https://git.example.test"]);
   assert.equal(model.integrations.enterprise.secretValuesStored, false);
   assert(model.modules.some((item) => item.path.startsWith("repo://api-service/")));
   assert(model.entryPoints.some((item) => item.path.startsWith("repo://web-client/")));
@@ -145,9 +147,11 @@ try {
   const localIntegration = readArtifactJson(".local/integrations.json");
   assert.equal(localIntegration.envFile, envFile);
   assert.equal(localIntegration.caFile, caFile);
+  assert.deepEqual(localIntegration.insecureTlsOrigins, ["https://git.example.test"]);
   assert(!JSON.stringify(localIntegration).includes("jira-secret"));
   const integrationStatus = JSON.parse(command(process.execPath, [agentctl, "integrations", "status"], artifactRoot).stdout);
   assert(integrationStatus.services.some((item) => item.kind === "figma" && item.configured));
+  assert(integrationStatus.services.some((item) => item.kind === "gitlab" && item.tlsVerification === "disabled-project-exception"));
   const fakeCodex = path.join(workspaceRoot, "fake-codex.js");
   const fakeCodexLog = path.join(workspaceRoot, "fake-codex.log");
   write(workspaceRoot, "fake-codex.js", `#!/usr/bin/env node\nconst fs = require("fs");\nfs.appendFileSync(process.env.FAKE_CODEX_LOG, JSON.stringify(process.argv.slice(2)) + "\\n");\nprocess.exit(process.argv[3] === "get" ? 1 : 0);\n`);

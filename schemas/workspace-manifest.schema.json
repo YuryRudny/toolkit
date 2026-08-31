@@ -41,6 +41,11 @@
           "type": "array",
           "uniqueItems": true,
           "items": { "enum": ["jira", "confluence", "gitlab", "figma"] }
+        },
+        "insecureTlsOrigins": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^https://[^/?#]+$" }
         }
       },
       "additionalProperties": false

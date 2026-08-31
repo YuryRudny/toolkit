@@ -44,6 +44,8 @@ node bsg-agent-system/bin/agentctl.js integrations configure /absolute/path/to/.
 
 Если внутренний HTTPS использует корпоративный CA, env может задать `ENTERPRISE_CA_FILE=/absolute/path/company-ca.pem`. `agentctl` проверяет файл и передаёт его как `NODE_EXTRA_CA_CERTS`; TLS verification не отключается. В Codex config сохраняется только несекретный путь к CA.
 
+Для legacy GitLab, который уже используется проектом через scoped Git config `sslVerify=false`, workspace может явно перечислить exact origin в `integrations.insecureTlsOrigins`. Runtime применяет `rejectUnauthorized=false` только к запросам этого GitLab origin через отдельный HTTPS request; process-wide `NODE_TLS_REJECT_UNAUTHORIZED=0` запрещён, остальные сервисы сохраняют TLS verification.
+
 Обязательные MCP tools: `integration_doctor`, `jira_get_issue`, `jira_resolve_context`, `confluence_get_page`, `figma_get_context`, `gitlab_get_context`. `jira_resolve_context` автоматически обходит только ссылки на configured origins и `figma.com`, а linked content всегда остаётся untrusted payload.
 
 ## Обязательный Project Config
