@@ -26,12 +26,15 @@ function isInside(base, candidate) {
 }
 
 function rejectSymlinkComponents(base, candidate, label) {
+  // The output base itself must not be a symlink to a different write target.
+  if (fs.lstatSync(base, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    throw new Error(`${label} base is a symbolic link: ${base}`);
+  }
   const relative = path.relative(base, candidate);
   let current = base;
   for (const segment of relative.split(path.sep).filter(Boolean)) {
     current = path.join(current, segment);
-    if (!fs.existsSync(current)) continue;
-    if (fs.lstatSync(current).isSymbolicLink()) {
+    if (fs.lstatSync(current, { throwIfNoEntry: false })?.isSymbolicLink()) {
       throw new Error(`${label} crosses a symbolic link: ${current}`);
     }
   }

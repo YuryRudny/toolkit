@@ -2,9 +2,11 @@
 
 const fs = require("fs");
 const path = require("path");
+const { resolveSourcePath } = require("./lib/workspace");
+const { resolveInside } = require("./lib/path-safety");
 
 const root = path.resolve(process.argv[2] || process.cwd());
-const outPath = path.join(root, "docs", "agent-system", "authority-map.json");
+const outPath = resolveInside(root, "docs/agent-system/authority-map.json", "authority output");
 
 function readJson(rel) {
   try {
@@ -16,7 +18,7 @@ function readJson(rel) {
 
 function readText(rel) {
   try {
-    return fs.readFileSync(path.join(root, rel), "utf8");
+    return fs.readFileSync(resolveSourcePath(root, rel), "utf8");
   } catch {
     return "";
   }
@@ -31,7 +33,7 @@ const model = readJson("docs/agent-system/project-model.json") || {};
 const registry = readJson("docs/agent-system/skill-registry.json") || { skills: [] };
 const previous = readJson("docs/agent-system/authority-map.json") || {};
 const previousRules = new Map((previous.rules || []).map((item) => [item.path, item]));
-const generatedPaths = new Set((registry.skills || []).map((item) => item.path));
+const generatedPaths = new Set(Object.keys(readJson("docs/agent-system/generated-ownership.json")?.files || {}));
 
 const rules = (model.existingRules || []).map((item) => {
   const saved = previousRules.get(item.path) || {};
@@ -54,7 +56,12 @@ for (const rule of rules.filter((item) => item.name)) {
 }
 const conflicts = [...byName.entries()]
   .filter(([, paths]) => paths.length > 1)
-  .map(([name, paths]) => ({ type: "duplicate-skill-name", name, paths, status: "unresolved" }));
+  .map(([name, paths]) => {
+    const saved = (previous.conflicts || []).find((item) => item.name === name && JSON.stringify([...item.paths].sort()) === JSON.stringify([...paths].sort()));
+    return saved?.status === "resolved" && saved.decision
+      ? { ...saved, paths }
+      : { type: "duplicate-skill-name", name, paths, status: "unresolved" };
+  });
 
 const routes = {};
 for (const skill of registry.skills || []) {
@@ -74,8 +81,8 @@ const authorityMap = {
 
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, `${JSON.stringify(authorityMap, null, 2)}\n`);
-if (conflicts.length) {
-  console.error(`Authority map created with ${conflicts.length} unresolved conflicts: ${path.relative(root, outPath)}`);
+if (conflicts.some((item) => item.status !== "resolved")) {
+  console.error(`Authority map created with unresolved conflicts: ${path.relative(root, outPath)}`);
   process.exit(2);
 }
 console.log(`Authority map created: ${path.relative(root, outPath)} (${rules.length} rules)`);

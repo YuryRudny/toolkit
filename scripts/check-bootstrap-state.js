@@ -2,8 +2,14 @@
 
 const fs = require("fs");
 const path = require("path");
+const { spawnSync } = require("child_process");
+const { hasSectionExemption } = require("./lib/input-contract");
 
 const root = path.resolve(process.argv[2] || process.cwd());
+const validation = spawnSync(process.execPath, [path.join(__dirname, "validate-generated-agent-system.js"), root], { stdio: "inherit" });
+if (validation.status !== 0) process.exit(validation.status || 1);
+const buildState = JSON.parse(fs.readFileSync(path.join(root, "docs/agent-system/bootstrap-state.json"), "utf8"));
+if (buildState.installMode === "degraded") { console.log("Degraded bootstrap contract passed; full research is unavailable."); process.exit(0); }
 
 function exists(rel) {
   return fs.existsSync(path.join(root, rel));
@@ -77,6 +83,7 @@ for (const file of inputFiles) {
     resultFormat: ["field", "content"],
   };
   for (const [key, fields] of Object.entries(typedArrays)) {
+    if (hasSectionExemption(root, input, key)) continue;
     if (!Array.isArray(input[key]) || input[key].length === 0) {
       failures.push(`${rel}: ${key} is empty`);
       continue;

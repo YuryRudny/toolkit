@@ -5,6 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const { evidence, prepareBuild } = require("./helpers");
 
 const toolkitRoot = path.resolve(__dirname, "..");
 const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "agent-toolkit-fixture-"));
@@ -75,10 +76,10 @@ try {
   assert(graph.tasks.some((item) => item.category === "module" && item.scope.includes("src/pages")));
   assert(graph.tasks.some((item) => item.category === "flow" && item.scope.includes("src/server/api/health.ts")));
 
-  run("create-research-tasks.js", ["complete", "R-001", "module inventory evidence"]);
+  run("create-research-tasks.js", ["complete", "R-001", evidence(graph.tasks.find((item) => item.id === "R-001"), "src/pages/index.vue")]);
   graph = readJson("docs/agent-system/research-workspace/research-tasks.json");
   const pagesTask = graph.tasks.find((item) => item.category === "module" && item.scope.includes("src/pages"));
-  run("create-research-tasks.js", ["complete", pagesTask.id, "pages ownership traced"]);
+  run("create-research-tasks.js", ["complete", pagesTask.id, evidence(pagesTask, "src/pages/index.vue")]);
   const taskMarkdown = fs.readFileSync(path.join(projectRoot, "docs/agent-system/research-workspace/research-tasks.md"), "utf8");
   assert(new RegExp(`\\| ${pagesTask.id} \\|[^\\n]+\\| complete \\|`).test(taskMarkdown));
   model = readJson("docs/agent-system/project-model.json");
@@ -100,6 +101,7 @@ try {
   write("docs/agent-system/smoke-checklist.md", "# Smoke\n- open home page\n");
   write("docs/agent-system/research-workspace/forms/critical-flows.form.md", "### Home flow\n- Entry: src/pages/index.vue\n- Trace: src/pages/index.vue -> src/server/api/health.ts\n- Risks: R-TEST-1\n- Smoke: open home\n");
 
+  prepareBuild(projectRoot);
   run("create-skill-inputs.js");
   const testingInput = readJson("docs/agent-system/skill-inputs/testing-strategy.json");
   assert.deepEqual(testingInput.selectedSeeds, ["external-ci-cd-and-automation"]);
@@ -129,10 +131,19 @@ try {
     const inputPath = path.join(inputsDir, file);
     const input = JSON.parse(fs.readFileSync(inputPath, "utf8"));
     input.status = "ready";
+    if (input.skillName === "code-review-and-quality") input.workflowSteps[0].action = "Проверить уникальный пользовательский workflow-маркер";
+    if (input.skillName === "testing-strategy") {
+      input.localRisks = [];
+      input.sectionExemptions = { localRisks: { reason: "Для этого синтетического skill нет подтверждённых дополнительных рисков.", evidence: ["docs/agent-system/risk-register.md"] } };
+    }
     fs.writeFileSync(inputPath, `${JSON.stringify(input, null, 2)}\n`);
   }
 
   const safeTestingInput = fs.readFileSync(testingInputPath, "utf8");
+  const authoredReview = fs.readFileSync(path.join(inputsDir, "code-review-and-quality.json"), "utf8");
+  run("create-skill-inputs.js");
+  assert.equal(fs.readFileSync(path.join(inputsDir, "code-review-and-quality.json"), "utf8"), authoredReview);
+  run("finalize-skill-inputs.js");
   const traversalNameInput = JSON.parse(safeTestingInput);
   traversalNameInput.skillName = "../../../owned";
   fs.writeFileSync(testingInputPath, `${JSON.stringify(traversalNameInput, null, 2)}\n`);
@@ -148,6 +159,7 @@ try {
   fs.writeFileSync(testingInputPath, safeTestingInput);
 
   run("render-skills.js");
+  assert(fs.readFileSync(path.join(projectRoot, "codex-skills/skills/code-review-and-quality/SKILL.md"), "utf8").includes("уникальный пользовательский workflow-маркер"));
   assert(fs.existsSync(path.join(projectRoot, "codex-skills/skills/testing-strategy/SKILL.md")));
   assert(fs.existsSync(path.join(projectRoot, "docs/agent-system/skill-registry.json")));
   assert(fs.readFileSync(path.join(projectRoot, "codex-skills/skills/code-review-and-quality/SKILL.md"), "utf8").includes("## Severity И Verdict Protocol"));
@@ -168,6 +180,19 @@ try {
   projectEntry = fs.readFileSync(path.join(projectRoot, "AGENTS.md"), "utf8");
   assert(projectEntry.includes("# Existing Project Rules"));
   assert.equal((projectEntry.match(/<!-- reusable-agent-system-toolkit:start -->/g) || []).length, 1);
+  run("generate-quality-report.js");
+  run("validate-generated-agent-system.js");
+  for (const phase of ["seed-selection", "skill-inputs", "skill-render", "quality-report"]) runState(["complete-phase", phase]);
+  write("src/new-module.js", "export const added = true;\n");
+  assert(runState(["complete-phase", "validation"], 1).stderr.includes("source changed since validation"));
+  fs.unlinkSync(path.join(projectRoot, "src/new-module.js"));
+  runState(["complete-phase", "validation"]);
+  const reportPath = path.join(projectRoot, "docs/agent-system/bootstrap-quality-report.json");
+  const report = fs.readFileSync(reportPath, "utf8");
+  fs.writeFileSync(reportPath, JSON.stringify({ score: 10, status: "passed" }));
+  assert(run("validate-generated-agent-system.js", [], 1).stderr.includes("independently computed"));
+  fs.writeFileSync(reportPath, report);
+  run("validate-generated-agent-system.js");
 
   const activeNames = new Set(registry.skills.filter((item) => item.status === "active").map((item) => item.name));
   const router = fs.readFileSync(path.join(projectRoot, "codex-skills/skills/workflow-router/SKILL.md"), "utf8");

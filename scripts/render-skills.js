@@ -4,8 +4,12 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { assertSafeName, assertSafeReference, resolveInside } = require("./lib/path-safety");
+const { writeOwnedArtifacts } = require("./lib/owned-artifacts");
+const { assertGenerationReady } = require("./lib/build-contract");
+const { hasSectionExemption } = require("./lib/input-contract");
 
 const root = path.resolve(process.argv[2] || process.cwd());
+assertGenerationReady(root, "render-skills");
 const toolkitRoot = path.resolve(__dirname, "..");
 const requestedSkill = process.argv[3] || null;
 const inputsDir = path.join(root, "docs", "agent-system", "skill-inputs");
@@ -48,9 +52,6 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
-function ensureDir(dir) {
-  fs.mkdirSync(dir, { recursive: true });
-}
 
 function text(value) {
   if (Array.isArray(value)) return value.filter(Boolean).join(" -> " );
@@ -58,10 +59,6 @@ function text(value) {
   return String(value).trim();
 }
 
-function compact(value, limit = 12) {
-  if (Array.isArray(value)) return text(value.slice(0, limit));
-  return text(value);
-}
 
 function normalizeRu(value) {
   return text(value)
@@ -85,42 +82,14 @@ function normalizeFlowPart(value) {
     .trim()
     .replace(/[.;]\s*$/, "");
 }
-function hasCyrillic(value) {
-  return /[А-Яа-яЁё]/.test(text(value));
-}
-
-function seedPurpose(seedId) {
-  const id = text(seedId);
-  if (/review|code-review/i.test(id)) return "senior-подход к ревью: корректность, архитектура, безопасность, performance, тестовая защита";
-  if (/typescript/i.test(id)) return "проверки TypeScript boundary: типы, error shape, runtime guards и сложность типов";
-  if (/ui|frontend/i.test(id)) return "production UI: состояния, accessibility, responsive, локализация и визуальная дисциплина";
-  if (/api|backend/i.test(id)) return "API/server boundaries: validation, auth, errors, contracts, observability";
-  if (/capacitor|mobile/i.test(id)) return "mobile shell: native bridge, permissions, build/sync, device smoke";
-  if (/test|ci/i.test(id)) return "проверки по blast radius: unit/integration/e2e/smoke и CI gates";
-  if (/security|performance/i.test(id)) return "trust boundaries, dependency risks, resource lifecycle и runtime cost";
-  if (/debug/i.test(id)) return "debug flow: симптом, воспроизведение, первопричина, минимальный fix, regression check";
-  if (/refactor/i.test(id)) return "safe refactor: slice, boundaries, behavior preservation, rollback path";
-  return "правила seed используются как reference; в runtime переносится только применимое к проекту";
-}
-
-function ruList(values, limit, fallback) {
-  const list = (Array.isArray(values) ? values : [values])
-    .filter(Boolean)
-    .map(normalizeRu)
-    .filter(hasCyrillic)
-    .slice(0, limit);
-  return list.length ? list.join(" -> ") : fallback;
-}
 
 function summarizeSeedExtraction(seed) {
-  const adapted = ruList(seed.projectAdaptation, 4, "заменить общие примеры на paths, risks, flows и проверки проекта");
-  const gates = ruList(seed.qualityGates, 3, "усилить проверку результата, security/performance risk и regression gap");
   return {
     seed: seed.seedId,
     source: seed.sourcePath,
-    used: seedPurpose(seed.seedId),
-    adapted,
-    gates,
+    used: text(seed.rulesTaken),
+    adapted: text(seed.projectAdaptation),
+    gates: text(seed.qualityGates),
   };
 }
 
@@ -144,7 +113,7 @@ function table(rows, headers) {
   return [
     head,
     sep,
-    ...safeRows.map((row) => `| ${headers.map((h) => text(row[h.key]).replace(/\n/g, "<br>")).join(" | ")} |`),
+    ...safeRows.map((row) => `| ${headers.map((h) => text(row[h.key]).replaceAll("|", "\\|").replace(/\n/g, "<br>")).join(" | ")} |`),
   ].join("\n");
 }
 
@@ -196,6 +165,7 @@ function validateInput(input, file) {
   }
   if (input.schemaVersion !== 2) failures.push("schemaVersion must be 2");
   if (input.status !== "ready") failures.push("status must be `ready`");
+  if (input.projectFingerprint !== readJson(path.join(root, "docs/agent-system/project-model.json")).fingerprint) failures.push("input projectFingerprint is stale; re-adapt the input to the current model");
   if (!input.skillName || !input.title || !input.description) failures.push("skillName/title/description are required");
   try {
     assertSafeName(input.skillName, "skillName");
@@ -205,6 +175,7 @@ function validateInput(input, file) {
 
   for (const [key, fields] of Object.entries(REQUIRED_V2_ARRAYS)) {
     const values = input[key];
+    if (hasSectionExemption(root, input, key)) continue;
     if (!Array.isArray(values) || values.length === 0) {
       failures.push(`${key} must contain typed project-specific entries`);
       continue;
@@ -290,78 +261,8 @@ function roleEvidence(role) {
   return evidence.filter(Boolean).map(normalizeRu).join(" -> ") || "RAG/source-подтверждение";
 }
 
-function renderProfileRole(role) {
-  return `${role.title}: ${normalizeRu(role.purpose)} Опора из seed: ${normalizeRu(role.seedHints)}. Проектная опора: ${normalizeRu(role.projectEvidence)}.`;
-}
 
 
-function operationalWorkflow(input) {
-  const name = input.skillName;
-  const verify = { step: "Проверка", action: "запустить подходящую команду, выполнить smoke или честно записать gap", evidence: "package scripts, smoke-checklist, risk-register", output: "проверенный результат или остаточный риск" };
-  const bySkill = {
-    "code-review-and-quality": [
-      { step: "Область", action: "определить touched area, consumers, критические потоки и risk ids", evidence: "задача, diff, RAG, source", output: "границы ревью и blast radius" },
-      { step: "Линзы ревью", action: "проверить correctness, readability, architecture, security, performance и tests", evidence: "profile roles, risk-register, source neighbors", output: "наблюдения с severity и подтверждение" },
-      { step: "Вердикт", action: "отделить blocker/request changes от suggestion/nit", evidence: "impact, exploitability, regression risk", output: "решение approve/request changes/blocker" },
-      verify,
-    ],
-    "frontend-ui-engineering": [
-      { step: "UI-поверхность", action: "найти page/layout/components/store/composable и соседние UI patterns", evidence: "project-map, source neighbors, styles", output: "карта UI surface" },
-      { step: "Матрица состояний", action: "проверить loading, empty, error, disabled, success, permission, long text и i18n", evidence: "критические потоки, components, smoke-checklist", output: "закрытые states или gaps" },
-      { step: "UI качество", action: "проверить accessibility, responsive, SSR/client guards, cleanup и raw HTML trust", evidence: "risk-register, component source, browser/manual smoke", output: "UI наблюдения или локальный fix" },
-      verify,
-    ],
-    "frontend-state-and-data": [
-      { step: "Трассировка данных", action: "пройти page/component -> store/composable -> repository/server -> DTO/API", evidence: "architecture-map, source, критические потоки", output: "trace chain и boundary" },
-      { step: "State consistency", action: "проверить stale data, duplicate requests, race conditions, loading/error mismatch и unsafe casts", evidence: "stores, repositories, risk-register", output: "state наблюдения или fix" },
-      { step: "Boundary guard", action: "добавить guard/normalizer или записать contract gap для external data", evidence: "DTO, runtime usage, error paths", output: "решение по безопасной границе" },
-      verify,
-    ],
-    "backend-engineering": [
-      { step: "API boundary", action: "найти route/handler/server util, external calls и consumers", evidence: "architecture-map, server source, project hooks", output: "границы API изменения" },
-      { step: "Contract/security", action: "проверить validation, auth authority, error shape, null/empty cases и compatibility", evidence: "DTO/schema, risk-register, consumers", output: "contract/security наблюдения" },
-      { step: "Runtime", action: "проверить cache keys, timeout, retries, timers, streams, logging и secret leaks", evidence: "server utils/plugins, performance forms", output: "resource/perf decision" },
-      verify,
-    ],
-    "api-contract-safety": [
-      { step: "Producer/consumer map", action: "найти всех producers, consumers и формат данных на boundary", evidence: "repositories, server routes, DTO/types", output: "contract impact map" },
-      { step: "Runtime-защита", action: "проверить schema/normalizer/fallback/error contract и backwards compatibility", evidence: "risk-register, source, критические потоки", output: "guard/fix/gap" },
-      { step: "Regression path", action: "подобрать проверку, которая ловит contract drift", evidence: "smoke-checklist, package scripts", output: "contract verification" },
-      verify,
-    ],
-    "debugging-and-error-recovery": [
-      { step: "Симптом", action: "зафиксировать observable failure, affected flow, environment и last changes", evidence: "issue/logs/browser/API/source", output: "точный симптом" },
-      { step: "Repro/первопричина", action: "построить repro или strongest подтверждение trail; пройти data flow, contract, lifecycle, cache", evidence: "commands, logs, source trace", output: "первопричина с файлом и условием" },
-      { step: "Исправление", action: "исправить причину минимальным slice, не маскируя симптом", evidence: "diff, neighbors, risk-register", output: "исправление причины" },
-      verify,
-    ],
-    "refactor-engineering": [
-      { step: "Baseline", action: "зафиксировать текущее поведение и safety checks до diff", evidence: "source, smoke-checklist, current-state", output: "behavior baseline" },
-      { step: "Safe slice", action: "разрезать refactor по boundary, consumers и rollback path", evidence: "refactor-plan, architecture-map", output: "slice plan" },
-      { step: "Simplify", action: "снизить coupling/duplication/unsafe pattern без feature creep", evidence: "diff, neighbor patterns, risk-register", output: "упрощение без смены поведения" },
-      verify,
-    ],
-    "testing-strategy": [
-      { step: "Радиус влияния", action: "связать изменение с flow, risk ids, consumers и типом регрессии", evidence: "risk-register, критические потоки, source", output: "цель проверки" },
-      { step: "Test level", action: "выбрать unit/component/integration/e2e/contract/manual smoke по цене и пользе", evidence: "existing tests, package scripts, CI", output: "план проверки" },
-      { step: "Gap discipline", action: "добавить проверку или записать точный gap с причиной и next step", evidence: "CI config, smoke-checklist", output: "regression protection или gap" },
-      verify,
-    ],
-    "security-performance-review": [
-      { step: "Boundary map", action: "найти user/external input, secrets, auth, dependencies, cache и resource lifecycle", evidence: "security/performance forms, source", output: "security/perf boundary" },
-      { step: "Exploit/regression path", action: "проверить XSS/injection/auth leak/SSRF/secret leak, memory leak, fan-out и bundle/runtime cost", evidence: "source search, dependency review, risk-register", output: "наблюдения с severity" },
-      { step: "Mitigation", action: "исправить локально, добавить guard/policy или записать blocker/refactor item", evidence: "risk-register, refactor-plan", output: "решение по mitigation" },
-      verify,
-    ],
-    "mobile-capacitor-shell": [
-      { step: "Web/native contract", action: "сверить Nuxt output, capacitor config, ios/android project и routing assumptions", evidence: "capacitor config, package scripts, native folders", output: "mobile build contract" },
-      { step: "Native risks", action: "проверить permissions, bridge errors, app state, deep links, safe area, keyboard и offline behavior", evidence: "mobile profile, native config", output: "список mobile-рисков" },
-      { step: "Sync/deploy", action: "выбрать generate/cap sync/device smoke или записать невозможность проверки", evidence: "commands, smoke-checklist, platform files", output: "mobile verification path" },
-      verify,
-    ],
-  };
-  return bySkill[name] || input.workflowSteps;
-}
 
 function specializedProtocol(input) {
   const protocols = {
@@ -460,12 +361,12 @@ Verdict допустим только как \`approve\`, \`request changes\` и
 Применяй роли профиля \`${input.profileId}\` последовательно и фиксируй evidence/output для каждой роли.`;
 }
 
-function renderSkill(input) {
+function renderSkillContent(input) {
   const seedRows = (input.seedExtractions || []).map(summarizeSeedExtraction);
 
   return `---
 name: ${input.skillName}
-description: ${input.description}
+description: ${JSON.stringify(input.description)}
 ---
 
 # ${input.title}
@@ -528,17 +429,17 @@ ${bullet(input.projectHooks, renderHook)}
 
 ## Критические Потоки
 
-${bullet(input.criticalFlows, renderFlow)}
+${input.criticalFlows.length ? bullet(input.criticalFlows, renderFlow) : renderExemption(input, "criticalFlows")}
 
 ## Локальные Антипаттерны И Риски
 
-${table(input.localRisks, [
+${input.localRisks.length ? table(input.localRisks, [
   { key: "id", label: "ID" },
   { key: "title", label: "Риск" },
   { key: "severity", label: "Серьёзность" },
   { key: "evidence", label: "Подтверждение" },
   { key: "action", label: "Действие skill" },
-])}
+]) : renderExemption(input, "localRisks")}
 
 Антипаттерны:
 
@@ -556,7 +457,7 @@ ${specializedProtocol(input)}
 
 ## Порядок работы
 
-${numbered(operationalWorkflow(input), renderWorkflow)}
+${numbered(input.workflowSteps, renderWorkflow)}
 
 ## Проверки По Слою
 
@@ -580,6 +481,23 @@ ${bullet(input.stopConditions, (condition) => `${normalizeRu(condition.condition
 ${input.resultFormat.map((field) => `- ${field.field}: ${field.content}`).join("\n")}
 \`\`\`
 `;
+}
+
+function renderExemption(input, key) {
+  const exemption = input.sectionExemptions[key];
+  return `${exemption.reason}\n\nПодтверждение: ${exemption.evidence.map((value) => `\`${value}\``).join(", ")}.`;
+}
+
+function renderSkill(input) {
+  const content = renderSkillContent(input);
+  const boundary = content.indexOf("\n## ");
+  if (boundary < 0) throw new Error("Rendered skill has no sections");
+  const templatePath = path.join(toolkitRoot, "templates/skills/compiled-skill.template.md");
+  const template = fs.readFileSync(templatePath, "utf8");
+  for (const token of ["{{HEADER}}", "{{SECTIONS}}"])
+    if (template.split(token).length !== 2) throw new Error(`Render template requires exactly one ${token}`);
+  if (/{{(?!HEADER}}|SECTIONS}})/.test(template)) throw new Error("Unknown render template token");
+  return template.replace(/{{(HEADER|SECTIONS)}}/g, (_, key) => key === "HEADER" ? content.slice(0, boundary).trimEnd() : content.slice(boundary).trim());
 }
 
 function renderAssembly(input) {
@@ -607,7 +525,8 @@ ${body}
 
 - Target skill name: ${input.skillName}
 - Target output path: \`codex-skills/skills/${input.skillName}/SKILL.md\`
-- Target full template: ${input.targetTemplate}
+- Render template: templates/skills/compiled-skill.template.md
+- Role design reference: ${input.targetTemplate}
 - Skill type: compiled full-install skill
 - Trigger: ${input.useWhen.join("; ")}
 - Не использовать когда: ${input.doNotUseWhen.join("; ")}
@@ -698,11 +617,14 @@ ${sectionBlocks}
 
 function renderReference(input) {
   const seedRules = (input.seedExtractions || [])
-    .flatMap((seed) => (seed.rulesTaken || []).map((rule) => `${seed.seedId}: ${normalizeRu(rule)}`))
-    .slice(0, 14);
+    .flatMap((seed) => (seed.rulesTaken || []).map((rule) => `${seed.seedId}: ${normalizeRu(rule)}`));
   const retrievalRecipes = (input.projectHooks || []).map((hook) => {
-    const paths = Array.isArray(hook.paths) ? hook.paths.join(" ") : hook.paths;
-    return `${normalizeRu(hook.name)}: начать с \`rg --files ${paths}\`, затем найти consumers/imports и проверить ${normalizeRu(hook.inspect)}`;
+    const paths = Array.isArray(hook.paths) ? hook.paths : [hook.paths];
+    if (paths.some((value) => value.startsWith("repo://"))) {
+      return `${normalizeRu(hook.name)}: разрешить ${paths.map((value) => `\`${value}\``).join(", ")} через repositories в workspace.json, затем выполнить rg --files в соответствующем source-каталоге и проверить ${normalizeRu(hook.inspect)}`;
+    }
+    const quoted = paths.map((value) => `'${String(value).replaceAll("'", "'\"'\"'")}'`).join(" ");
+    return `${normalizeRu(hook.name)}: начать с \`rg --files -- ${quoted}\`, затем найти consumers/imports и проверить ${normalizeRu(hook.inspect)}`;
   });
   return `# ${input.title} Reference
 
@@ -774,22 +696,16 @@ if (failures.length) {
   process.exit(1);
 }
 
-ensureDir(skillsDir);
-ensureDir(refsDir);
-ensureDir(assemblyDir);
-
+const writePlan = [];
 for (const input of inputs) {
-  const skillPath = resolveInside(skillsDir, `${input.skillName}/SKILL.md`, "skill output");
-  ensureDir(path.dirname(skillPath));
-  fs.writeFileSync(skillPath, renderSkill(input));
-  fs.writeFileSync(resolveInside(assemblyDir, `${input.skillName}.md`, "assembly output"), renderAssembly(input));
+  writePlan.push({ relativePath: `codex-skills/skills/${input.skillName}/SKILL.md`, text: renderSkill(input) });
+  writePlan.push({ relativePath: `docs/agent-system/skill-assembly/${input.skillName}.md`, text: renderAssembly(input) });
   for (const reference of input.references || []) {
     assertSafeReference(reference);
-    const refPath = resolveInside(refsDir, path.basename(reference), "reference output");
-    ensureDir(path.dirname(refPath));
-    fs.writeFileSync(refPath, renderReference(input));
+    writePlan.push({ relativePath: reference, text: renderReference(input) });
   }
 }
+writeOwnedArtifacts(root, writePlan);
 
 const registryResult = spawnSync(process.execPath, [path.join(toolkitRoot, "scripts", "create-skill-registry.js"), root], {
   cwd: root,

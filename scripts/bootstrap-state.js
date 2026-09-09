@@ -2,6 +2,9 @@
 
 const fs = require("fs");
 const path = require("path");
+const { resolveInside } = require("./lib/path-safety");
+const { docsFailures, modelFailures, evaluateQuality, artifactFingerprint, sourceFingerprint } = require("./lib/build-contract");
+const { researchFailures } = require("./lib/research-evidence");
 
 const root = path.resolve(process.argv[3] || process.argv[2] || process.cwd());
 const command = process.argv[2] && !process.argv[2].startsWith(".") && !process.argv[2].startsWith("/") ? process.argv[2] : "status";
@@ -24,7 +27,9 @@ const phases = [
   "complete",
 ];
 
-const statePath = path.join(root, "docs", "agent-system", "bootstrap-state.json");
+const statePath = resolveInside(root, "docs/agent-system/bootstrap-state.json", "bootstrap state");
+const degradedPhases = ["install-wizard", "enterprise-setup", "deep-scan-decision", "existing-rules-merge", "skill-render", "validation", "repository-hygiene", "complete"];
+const activePhases = () => state.installMode === "degraded" ? degradedPhases : phases;
 
 function ensureDir(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -104,6 +109,7 @@ function phaseFailures(phase) {
   }
   if (phase === "discovery") {
     const model = readJson("docs/agent-system/project-model.json");
+    failures.push(...modelFailures(model));
     if (!model) failures.push("missing docs/agent-system/project-model.json");
     else {
       if (!Array.isArray(model.modules) || model.modules.length === 0) failures.push("project model has no modules");
@@ -120,6 +126,7 @@ function phaseFailures(phase) {
     const unfinished = (tasks?.tasks || []).filter((task) => !["complete", "not-applicable"].includes(task.status));
     if (!tasks) failures.push("research task graph is missing");
     else if (unfinished.length) failures.push(`unfinished research tasks: ${unfinished.map((task) => task.id).join(", ")}`);
+    failures.push(...researchFailures(root, readJson("docs/agent-system/project-model.json"), tasks));
     requireFiles([
       "docs/agent-system/research-workspace/evidence-log.md",
       "docs/agent-system/research-workspace/research-notes.md",
@@ -127,6 +134,7 @@ function phaseFailures(phase) {
     ]);
   }
   if (phase === "docs-rag") {
+    failures.push(...docsFailures(root));
     requireFiles([
       "docs/agent-system/full-project-research-report.md",
       "docs/agent-system/research-evidence-pack.md",
@@ -155,10 +163,15 @@ function phaseFailures(phase) {
       if (skill.status === "active" && !exists(skill.path)) failures.push(`registered skill is missing: ${skill.path}`);
     }
   }
-  if (phase === "quality-report") requireFiles(["docs/agent-system/bootstrap-quality-report.md"]);
+  if (phase === "quality-report") {
+    requireFiles(["docs/agent-system/bootstrap-quality-report.md", "docs/agent-system/bootstrap-quality-report.json"]);
+    if (evaluateQuality(root).status !== "passed") failures.push("quality contract has failed checks");
+  }
   if (phase === "validation") {
     const result = readJson("docs/agent-system/validation-result.json");
     if (!result || result.status !== "passed") failures.push("deterministic validation has not produced a passed validation-result.json");
+    else if (result.artifactFingerprint !== artifactFingerprint(root)) failures.push("validation result is stale; rerun validate");
+    else if (state.installMode === "full" && result.sourceFingerprint !== sourceFingerprint(root, readJson("docs/agent-system/project-model.json"))) failures.push("source changed since validation");
   }
   if (phase === "repository-hygiene") {
     if (exists("workspace.json")) {
@@ -174,10 +187,13 @@ function phaseFailures(phase) {
     }
   }
   if (phase === "complete") {
-    const previous = phases.slice(0, -1).filter((item) => item !== "complete");
+    const previous = activePhases().slice(0, -1);
     for (const item of previous) {
       if (!state.completedPhases.includes(item)) failures.push(`phase is not complete: ${item}`);
     }
+    const result = readJson("docs/agent-system/validation-result.json");
+    if (result?.status !== "passed" || result.artifactFingerprint !== artifactFingerprint(root)) failures.push("validation is missing or stale");
+    if (state.installMode === "full" && result?.sourceFingerprint !== sourceFingerprint(root, readJson("docs/agent-system/project-model.json"))) failures.push("source changed since validation");
   }
   return failures;
 }
@@ -209,6 +225,7 @@ if (command === "init") {
   writeState(state);
   console.log(`Current phase: ${phase}`);
 } else if (command === "complete-phase") {
+  if (state.blocked) { console.error("Bootstrap is blocked; resolve and unblock first"); process.exit(1); }
   const phase = process.argv[4] || state.currentPhase;
   if (!phases.includes(phase)) {
     console.error(`Unknown phase: ${phase}`);
@@ -227,7 +244,8 @@ if (command === "init") {
   if (!state.completedPhases.includes(phase)) state.completedPhases.push(phase);
   state.phases[phase].status = "complete";
   state.phases[phase].updatedAt = now();
-  const next = phases[phases.indexOf(phase) + 1] || "complete";
+  const sequence = activePhases();
+  const next = sequence[sequence.indexOf(phase) + 1] || "complete";
   state.currentPhase = next;
   state.nextAction = next === "complete" ? "bootstrap complete" : `start ${next}`;
   writeState(state);
@@ -252,9 +270,25 @@ if (command === "init") {
     console.error("Install mode must be full or degraded");
     process.exit(1);
   }
+  if (state.completedPhases.includes("deep-scan-decision") && state.installMode !== mode) {
+    console.error("Repair to deep-scan-decision before changing install mode"); process.exit(1);
+  }
   state.installMode = mode;
   writeState(state);
   console.log(`Install mode: ${mode}`);
+} else if (command === "repair-phase") {
+  const phase = process.argv[4];
+  const sequence = activePhases();
+  if (!sequence.includes(phase) || sequence.indexOf(phase) > sequence.indexOf(state.currentPhase)) {
+    console.error("Repair target must be the current or an earlier phase"); process.exit(1);
+  }
+  const reset = sequence.slice(sequence.indexOf(phase));
+  state.completedPhases = state.completedPhases.filter((item) => !reset.includes(item));
+  for (const item of reset) state.phases[item] = { status: "pending", updatedAt: now(), notes: [] };
+  state.currentPhase = phase;
+  state.nextAction = `repair ${phase}`;
+  writeState(state);
+  console.log(`Repair phase: ${phase}; later completions invalidated`);
 } else {
   usage();
   process.exit(1);

@@ -5,6 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const { prepareBuild } = require("./helpers");
 
 const toolkitRoot = path.resolve(__dirname, "..");
 const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "agent-sidecar-fixture-"));
@@ -54,6 +55,7 @@ try {
   const apiRemote = "https://git.example.test/group/api-service.git";
   const uiRemote = "https://git.example.test/group/web-client.git";
   initRepo(artifactRoot, artifactRemote, { "README.md": "# Team agent system\n", ".gitignore": ".local/\n" });
+  initRepo(path.join(workspaceRoot, "toolkit"), "git@example.test:team/toolkit.git", { "skills/project-agent-bootstrap/SKILL.md": "# Fixture bootstrap\n" });
   initRepo(apiRoot, apiRemote, {
     "pom.xml": "<project><artifactId>api-service</artifactId></project>\n",
     "src/main/java/example/Application.java": "class Application {}\n",
@@ -82,7 +84,6 @@ try {
     ],
   }, null, 2)}\n`);
   write(artifactRoot, "AGENTS.md", "# Workspace rules\n");
-  write(artifactRoot, "codex-skills/skills/workflow-router/SKILL.md", "---\nname: workflow-router\ndescription: Fixture router.\n---\n");
 
   runToolkit("workspace-guard.js", ["snapshot", artifactRoot]);
   const baselineApiStatus = command("git", ["status", "--porcelain=v1", "-uall"], apiRoot).stdout;
@@ -104,9 +105,14 @@ try {
   assert.equal(command("git", ["status", "--porcelain=v1", "-uall"], apiRoot).stdout, baselineApiStatus);
   assert.equal(command("git", ["status", "--porcelain=v1", "-uall"], uiRoot).stdout, baselineUiStatus);
 
+  prepareBuild(artifactRoot);
   runToolkit("render-operational-skills.js", [artifactRoot]);
   assert(fs.existsSync(path.join(artifactRoot, "codex-skills/skills/enterprise-context/SKILL.md")));
   assert(fs.existsSync(path.join(artifactRoot, "codex-skills/references/enterprise-context.md")));
+  assert(fs.existsSync(path.join(artifactRoot, "codex-skills/skills/agent-system-update/SKILL.md")));
+  for (const name of ["update-modes.md", "full-update.md", "incremental-update.md", "repository-separation.md", "local-agent-storage.md"]) {
+    assert.equal(fs.readFileSync(path.join(artifactRoot, "codex-skills/references", name), "utf8"), fs.readFileSync(path.join(toolkitRoot, "references", name), "utf8"));
+  }
   assert(fs.readFileSync(path.join(artifactRoot, "codex-skills/skills/workflow-router/SKILL.md"), "utf8").includes("Enterprise Context Mode"));
 
   runToolkit("create-skill-registry.js", [artifactRoot]);
@@ -130,6 +136,29 @@ try {
   command(process.execPath, [agentctl, "doctor"], artifactRoot);
   const status = JSON.parse(command(process.execPath, [agentctl, "status"], artifactRoot).stdout);
   assert.equal(status.knowledgeStatus, "current");
+  const snapshotFile = path.join(artifactRoot, "docs/agent-system/source-snapshot.json");
+  const snapshotText = fs.readFileSync(snapshotFile, "utf8");
+  fs.unlinkSync(snapshotFile);
+  assert.equal(JSON.parse(command(process.execPath, [agentctl, "status"], artifactRoot).stdout).knowledgeStatus, "unknown");
+  fs.writeFileSync(snapshotFile, snapshotText);
+  const originalUi = fs.readFileSync(path.join(uiRoot, "src/pages/index.vue"), "utf8");
+  write(uiRoot, "src/pages/index.vue", "<template>dirty first</template>\n");
+  assert.equal(JSON.parse(command(process.execPath, [agentctl, "status"], artifactRoot).stdout).knowledgeStatus, "stale");
+  runToolkit("workspace-guard.js", ["snapshot", artifactRoot]);
+  write(uiRoot, "src/pages/index.vue", "<template>dirty second</template>\n");
+  runToolkit("workspace-guard.js", ["verify", artifactRoot], 1);
+  write(uiRoot, "src/pages/index.vue", originalUi);
+  fs.writeFileSync(snapshotFile, snapshotText);
+  runToolkit("workspace-guard.js", ["verify", artifactRoot]);
+  const manifestFile = path.join(artifactRoot, "workspace.json");
+  const safeManifest = fs.readFileSync(manifestFile, "utf8");
+  const unsafeManifest = JSON.parse(safeManifest);
+  unsafeManifest.localIntegration.agentsFile = "api-service/AGENTS.md";
+  unsafeManifest.localIntegration.skillsDirectory = "api-service/.agents/skills";
+  fs.writeFileSync(manifestFile, JSON.stringify(unsafeManifest));
+  assert(command(process.execPath, [agentctl, "install"], artifactRoot, 1).stderr.includes("customer repository"));
+  assert(!fs.existsSync(path.join(apiRoot, "AGENTS.md")));
+  fs.writeFileSync(manifestFile, safeManifest);
 
   const envFile = path.join(workspaceRoot, "developer.env");
   const caFile = path.join(workspaceRoot, "company-ca.pem");
@@ -188,7 +217,10 @@ try {
   assert.equal(command("git", ["status", "--porcelain=v1", "-uall"], apiRoot).stdout, baselineApiStatus);
   assert.equal(command("git", ["status", "--porcelain=v1", "-uall"], uiRoot).stdout, baselineUiStatus);
 
-  write(apiRoot, "AGENTS.md", "forbidden\n");
+  write(apiRoot, "AGENTS.md", "# Customer-owned rules\nPreserve these rules.\n");
+  command(process.execPath, [agentctl, "commit-plan"], artifactRoot);
+  runToolkit("workspace-guard.js", ["commit-plan", artifactRoot]);
+  write(apiRoot, "AGENTS.md", "# Customer-owned rules\n<!-- reusable-agent-system-toolkit:start -->\nOur generated block\n<!-- reusable-agent-system-toolkit:end -->\n");
   const plan = command(process.execPath, [agentctl, "commit-plan"], artifactRoot, 1);
   assert(plan.stdout.includes('"status": "blocked"'));
   assert(plan.stdout.includes('"file": "AGENTS.md"'));

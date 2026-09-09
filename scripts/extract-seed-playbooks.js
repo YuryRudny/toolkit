@@ -4,16 +4,18 @@ const fs = require("fs");
 const path = require("path");
 const { assertSafeName, resolveInside } = require("./lib/path-safety");
 const { verifySeedIntegrity } = require("./seed-integrity");
+const { assertGenerationReady } = require("./lib/build-contract");
 
 const root = path.resolve(process.argv[2] || process.cwd());
+assertGenerationReady(root, "extract-seeds");
 const requestedSkill = process.argv[3] || null;
 const toolkitRoot = path.resolve(__dirname, "..");
 const packageJsonPath = path.join(root, "package.json");
 const packageJson = fs.existsSync(packageJsonPath) ? JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) : {};
 const deps = { ...(packageJson.dependencies || {}), ...(packageJson.devDependencies || {}) };
 const stackEvidence = { react: Boolean(deps.react), vue: Boolean(deps.vue || deps.nuxt), nuxt: Boolean(deps.nuxt) };
-const inputsDir = path.join(root, "docs", "agent-system", "skill-inputs");
-const outDir = path.join(root, "docs", "agent-system", "seed-extractions");
+const inputsDir = resolveInside(root, "docs/agent-system/skill-inputs", "skill inputs");
+const outDir = resolveInside(root, "docs/agent-system/seed-extractions", "seed extractions");
 
 function loadSeedRegistry() {
   const registry = new Map();

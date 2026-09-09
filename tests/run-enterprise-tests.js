@@ -94,6 +94,28 @@ async function runMcpList() {
 }
 
 async function main() {
+  const { requestJson } = require(serverScript);
+  let streamedChunks = 0;
+  const limitsBase = await listen((request, response) => {
+    if (request.url === "/ok") return json(response, 200, { ok: true });
+    if (request.url === "/redirect") { response.writeHead(302, { Location: "/ok" }); response.end(); return; }
+    if (request.url === "/declared") { response.writeHead(200, { "Content-Length": "9999999" }); response.flushHeaders(); return; }
+    if (request.url === "/aborted") { response.writeHead(200, { "Content-Length": "100" }); response.write("{"); setTimeout(() => response.destroy(), 10); return; }
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.flushHeaders();
+    if (request.url === "/slow") { response.write("{"); return; }
+    const timer = setInterval(() => { streamedChunks++; response.write("x".repeat(128)); }, 5);
+    response.once("close", () => clearInterval(timer));
+  });
+  const limitService = { id: "limits", baseUrl: limitsBase, headers: {} };
+  assert.deepEqual(await requestJson(limitService, "/ok"), { ok: true });
+  await assert.rejects(requestJson(limitService, "/slow", { timeoutMs: 50 }), (error) => error.category === "timeout");
+  await assert.rejects(requestJson(limitService, "/stream", { maxBytes: 256 }), (error) => error.category === "response-too-large");
+  assert(streamedChunks < 20, "oversized streaming body must be cancelled before buffering arbitrary data");
+  await assert.rejects(requestJson(limitService, "/declared", { maxBytes: 256 }), (error) => error.category === "response-too-large");
+  await assert.rejects(requestJson(limitService, "/aborted"), (error) => error.category === "transport");
+  await assert.rejects(requestJson(limitService, "/redirect"), (error) => error.category === "security");
+  console.log("Enterprise deadline, streaming limit, abort and redirect regressions passed.");
   let confluenceBase;
   let figmaBase;
   let gitlabBase;
@@ -223,7 +245,7 @@ async function main() {
 }
 
 main().finally(() => {
-  for (const server of servers) server.close();
+  for (const server of servers) { server.closeAllConnections(); server.close(); }
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }).catch((error) => {
   console.error(error.stack || error);

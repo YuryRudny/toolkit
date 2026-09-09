@@ -2,15 +2,17 @@
 
 const fs = require("fs");
 const path = require("path");
+const { captureEvidence, evidenceFailures, researchFailures } = require("./lib/research-evidence");
+const { resolveInside } = require("./lib/path-safety");
 
 const root = path.resolve(process.argv[2] || process.cwd());
 const command = process.argv[3] || "init";
 const taskId = process.argv[4] || null;
 const note = process.argv.slice(5).join(" ").trim();
-const outDir = path.join(root, "docs", "agent-system", "research-workspace");
+const outDir = resolveInside(root, "docs/agent-system/research-workspace", "research output");
 const jsonPath = path.join(outDir, "research-tasks.json");
 const mdPath = path.join(outDir, "research-tasks.md");
-const modelPath = path.join(root, "docs", "agent-system", "project-model.json");
+const modelPath = resolveInside(root, "docs/agent-system/project-model.json", "project model");
 
 function readJson(file) {
   try {
@@ -117,15 +119,17 @@ function topologyTasks(model) {
   return tasks;
 }
 
-function mergeTasks(next, previous) {
+function mergeTasks(next, previous, fingerprint) {
   const old = new Map((previous?.tasks || []).map((item) => [item.id, item]));
   return next.map((item) => {
     const saved = old.get(item.id);
     if (!saved) return item;
+    const changed = previous.projectFingerprint !== fingerprint || JSON.stringify(saved.scope) !== JSON.stringify(item.scope);
     return {
       ...item,
-      status: saved.status,
+      status: changed ? "pending" : saved.status,
       evidence: saved.evidence || [],
+      evidenceStale: changed,
       findings: saved.findings || [],
       gaps: saved.gaps || [],
       updatedAt: saved.updatedAt || null,
@@ -170,12 +174,15 @@ function syncProjectModel(model, payload) {
     const task = completed.find((item) => item.category === "module" && item.scope.includes(module.path));
     if (task) {
       module.status = task.status === "complete" ? "researched" : "not-applicable";
-      module.evidence = [...new Set([...(module.evidence || []), ...(task.evidence || [])])];
+      module.evidence = task.evidence || [];
+    } else if (module.status === "researched") {
+      module.status = "stale";
     }
   }
   for (const entry of model.entryPoints || []) {
     const task = completed.find((item) => ["flow", "flow-group"].includes(item.category) && item.scope.includes(entry.path));
     if (task) entry.status = task.status === "complete" ? "traced" : "not-applicable";
+    else if (entry.status === "traced") entry.status = "stale";
   }
 
   const preferredFlowsPath = path.join(root, "docs", "agent-system", "research-workspace", "forms", "critical-flows.md");
@@ -198,7 +205,7 @@ function syncProjectModel(model, payload) {
         chain: (trace || entry).split(/\s*(?:->|→)\s*/).filter(Boolean),
         riskIds: risks.match(/\bR-[A-Z0-9-]+\b/g) || [],
         verification,
-        status: "traced",
+        status: payload.tasks.every((task) => ["complete", "not-applicable"].includes(task.status)) ? "traced" : "pending",
       };
     }).filter(Boolean);
     if (parsed.length) model.criticalFlows = parsed;
@@ -210,7 +217,7 @@ function syncProjectModel(model, payload) {
     completedTaskIds: completed.map((item) => item.id),
     unfinishedTaskIds: unfinished.map((item) => item.id),
     taskGraphFingerprint: payload.projectFingerprint,
-    stale: payload.projectFingerprint !== model.fingerprint,
+    stale: payload.projectFingerprint !== model.fingerprint || payload.tasks.some((task) => task.evidenceStale),
     updatedAt: new Date().toISOString(),
   };
   model.updatedAt = new Date().toISOString();
@@ -235,57 +242,14 @@ const payload = {
   updatedAt: null,
   projectRoot: model.mode === "sidecar-workspace" ? model.projectRoot : root,
   projectFingerprint: model.fingerprint,
-  tasks: mergeTasks(generated, previous),
+  tasks: mergeTasks(generated, previous, model.fingerprint),
 };
 
 if (command === "complete-evidenced") {
-  const requiredArtifacts = [
-    "docs/agent-system/full-project-research-report.md",
-    "docs/agent-system/research-evidence-pack.md",
-    "docs/agent-system/risk-register.md",
-    "docs/agent-system/refactor-plan.md",
-    "docs/agent-system/knowledge-base.md",
-    "docs/agent-system/knowledge-index.md",
-    "docs/agent-system/research-workspace/forms/module-inventory.md",
-    "docs/agent-system/research-workspace/forms/critical-flows.md",
-    "docs/agent-system/research-workspace/forms/defect-hunt.md",
-    "docs/agent-system/research-workspace/forms/dependency-review.md",
-    "docs/agent-system/research-workspace/forms/security-review.md",
-    "docs/agent-system/research-workspace/forms/performance-resource-review.md",
-    "docs/agent-system/research-workspace/forms/testing-ci-review.md",
-  ];
-  const invalid = requiredArtifacts.filter((relativePath) => {
-    const file = path.join(root, relativePath);
-    return !fs.existsSync(file) || fs.readFileSync(file, "utf8").trim().length < 400;
-  });
+  const invalid = researchFailures(root, model, payload);
   if (invalid.length) {
-    console.error(`Cannot complete research; evidence artifacts missing or shallow: ${invalid.join(", ")}`);
+    console.error(`Cannot complete research; complete each task with structured evidence first: ${invalid.join(", ")}`);
     process.exit(1);
-  }
-  const evidenceByCategory = {
-    inventory: "docs/agent-system/research-workspace/forms/module-inventory.md",
-    runtime: "docs/agent-system/stack-profile.md",
-    "hot-spots": "docs/agent-system/research-workspace/forms/module-inventory.md",
-    boundaries: "docs/agent-system/research-workspace/forms/boundary-contract-review.md",
-    security: "docs/agent-system/research-workspace/forms/security-review.md",
-    performance: "docs/agent-system/research-workspace/forms/performance-resource-review.md",
-    dependencies: "docs/agent-system/research-workspace/forms/dependency-review.md",
-    "testing-ci": "docs/agent-system/research-workspace/forms/testing-ci-review.md",
-    frontend: "docs/agent-system/full-project-research-report.md",
-    server: "docs/agent-system/full-project-research-report.md",
-    database: "docs/agent-system/research-evidence-pack.md",
-    workers: "docs/agent-system/research-evidence-pack.md",
-    module: "docs/agent-system/research-workspace/forms/module-inventory.md",
-    flow: "docs/agent-system/research-workspace/forms/critical-flows.md",
-    "flow-group": "docs/agent-system/research-workspace/forms/critical-flows.md",
-    "rag-payload": "docs/agent-system/knowledge-index.md",
-  };
-  const now = new Date().toISOString();
-  for (const item of payload.tasks) {
-    const evidenceFile = evidenceByCategory[item.category] || "docs/agent-system/research-evidence-pack.md";
-    item.status = "complete";
-    item.updatedAt = now;
-    item.evidence = [...new Set([...(item.evidence || []), `${evidenceFile}; scope: ${item.scope.join(", ")}`])];
   }
 }
 
@@ -301,7 +265,7 @@ if (["complete", "not-applicable", "start"].includes(command)) {
   }
   const blockedBy = (selected.dependsOn || []).filter((id) => {
     const dependency = payload.tasks.find((item) => item.id === id);
-    return dependency && !["complete", "not-applicable"].includes(dependency.status);
+    return !dependency || evidenceFailures(root, dependency).length > 0;
   });
   if (command === "complete" && blockedBy.length) {
     console.error(`Cannot complete ${taskId}; unfinished dependencies: ${blockedBy.join(", ")}`);
@@ -309,9 +273,23 @@ if (["complete", "not-applicable", "start"].includes(command)) {
   }
   selected.status = command === "start" ? "in-progress" : command;
   selected.updatedAt = new Date().toISOString();
-  if (note) {
-    const target = command === "not-applicable" ? selected.gaps : selected.evidence;
-    target.push(note);
+  if (command === "complete") {
+    try {
+      const record = note.startsWith("{") ? JSON.parse(note) : readJson(resolveInside(root, note, "evidence record", { mustExist: true }));
+      selected.evidence = [captureEvidence(root, selected, record)];
+      selected.evidenceStale = false;
+    } catch (error) { console.error(`Cannot complete ${taskId}: ${error.message}`); process.exit(1); }
+  } else if (command === "not-applicable") {
+    if (!note) { console.error("not-applicable requires an explicit reason"); process.exit(1); }
+    selected.gaps = [note];
+    selected.evidenceStale = false;
+  }
+}
+
+for (const item of payload.tasks) {
+  if (["complete", "not-applicable"].includes(item.status) && evidenceFailures(root, item).length) {
+    item.status = "pending";
+    item.evidenceStale = true;
   }
 }
 

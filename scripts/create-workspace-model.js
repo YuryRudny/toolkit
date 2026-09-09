@@ -4,25 +4,15 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { loadWorkspace, repoUri, writeArtifact, git } = require("./lib/workspace");
+const { contentFingerprint, mergeDiscovered, discoverSourceFiles } = require("./lib/source-state");
 
 const workspace = loadWorkspace(process.argv[2] || process.cwd());
 const outRel = "docs/agent-system/project-model.json";
 const outPath = path.join(workspace.artifactRoot, outRel);
 const skipDirs = new Set([
   ".git", "node_modules", ".nuxt", ".next", ".output", "dist", "build", "coverage",
-  "vendor", ".venv", "venv", "target", "bin", "obj", ".yarn", ".tmp", ".idea", ".gradle",
+  "vendor", ".venv", "venv", "target", "obj", ".yarn", ".tmp", ".idea", ".gradle",
 ]);
-
-function walk(repoRoot, dir = repoRoot, acc = []) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (skipDirs.has(entry.name)) continue;
-    const full = path.join(dir, entry.name);
-    if (entry.isSymbolicLink()) continue;
-    if (entry.isDirectory()) walk(repoRoot, full, acc);
-    else acc.push(path.relative(repoRoot, full).replace(/\\/g, "/"));
-  }
-  return acc;
-}
 
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; }
@@ -57,7 +47,7 @@ function stableId(prefix, value) {
 function uniq(values) { return [...new Set(values.filter(Boolean))]; }
 
 function discover(repo) {
-  const files = walk(repo.root).sort();
+  const files = discoverSourceFiles(repo.root, true);
   const exists = (rel) => fs.existsSync(path.join(repo.root, rel));
   const packageJson = readJson(path.join(repo.root, "package.json")) || {};
   const deps = { ...(packageJson.dependencies || {}), ...(packageJson.devDependencies || {}) };
@@ -66,7 +56,14 @@ function discover(repo) {
   const capabilities = {
     javascript: files.some((file) => /\.(js|jsx|mjs|cjs)$/.test(file)),
     typescript: files.some((file) => /\.(ts|tsx)$/.test(file)),
-    node: Boolean(packageJson.name),
+    node: files.some((file) => /(^|\/)package\.json$/.test(file)),
+    python: files.some((file) => /\.py$|(^|\/)pyproject\.toml$/.test(file)),
+    go: files.some((file) => /\.go$|(^|\/)go\.mod$/.test(file)),
+    rust: files.some((file) => /\.rs$|(^|\/)Cargo\.toml$/.test(file)),
+    terraform: files.some((file) => file.endsWith(".tf")),
+    nuxt: Boolean(deps.nuxt) || files.some((file) => /(^|\/)nuxt\.config\./.test(file)),
+    next: Boolean(deps.next) || files.some((file) => /(^|\/)next\.config\./.test(file)),
+    capacitor: Boolean(deps["@capacitor/core"]) || files.some((file) => /capacitor\.config\./.test(file)),
     frontend: files.some((file) => /\.(vue|tsx|jsx|html)$/.test(file)),
     vue: Boolean(deps.vue) || files.some((file) => file.endsWith(".vue")),
     react: Boolean(deps.react) || files.some((file) => /\.(tsx|jsx)$/.test(file)),
@@ -82,11 +79,18 @@ function discover(repo) {
     ci: files.some((file) => /^\.github\/workflows\/|^\.gitlab-ci|(^|\/)Jenkinsfile$/.test(file)),
   };
   const manifestPatterns = [
-    /^package\.json$/, /^yarn\.lock$/, /^pnpm-lock\.yaml$/, /^package-lock\.json$/,
+    /(^|\/)(package\.json|yarn\.lock|pnpm-lock\.yaml|package-lock\.json|pyproject\.toml|poetry\.lock|requirements[^/]*\.txt|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|composer\.json|Gemfile)$/,
     /(^|\/)pom\.xml$/, /(^|\/)build\.gradle(?:\.kts)?$/, /(^|\/)settings\.gradle(?:\.kts)?$/,
   ];
   const manifests = files.filter((file) => manifestPatterns.some((pattern) => pattern.test(file)))
     .map((file) => ({ path: repoUri(repo.id, file), kind: "manifest", repoId: repo.id }));
+  const commands = files.filter((file) => /(^|\/)package\.json$/.test(file)).flatMap((file) => {
+    const manifest = readJson(path.join(repo.root, file)) || {};
+    const directory = path.posix.dirname(file);
+    return Object.entries(manifest.scripts || {}).map(([name]) => ({
+      name, command: `npm run ${name}`, directory: repoUri(repo.id, directory === "." ? "" : directory), evidence: repoUri(repo.id, file),
+    }));
+  });
   const knownRoots = ["src", "app", "pages", "server", "api", "packages", "apps", "lib", "shared", "services"];
   const sourceRoots = uniq(knownRoots.filter(exists));
   if (!sourceRoots.length) {
@@ -98,30 +102,33 @@ function discover(repo) {
     if (!fs.existsSync(absolute) || !fs.statSync(absolute).isDirectory()) continue;
     const children = fs.readdirSync(absolute, { withFileTypes: true }).filter((entry) => entry.isDirectory() && !skipDirs.has(entry.name));
     if (children.length) children.forEach((entry) => modulePaths.push(path.join(sourceRoot, entry.name).replace(/\\/g, "/")));
-    else modulePaths.push(sourceRoot);
+    if (!children.length || files.some((file) => path.posix.dirname(file) === sourceRoot && extensionLanguage(file))) modulePaths.push(sourceRoot);
   }
+  if (!modulePaths.length && files.some(extensionLanguage)) modulePaths.push(".");
   const modules = uniq(modulePaths).map((modulePath) => {
-    const owned = files.filter((file) => file === modulePath || file.startsWith(`${modulePath}/`));
-    const uri = repoUri(repo.id, modulePath);
+    const owned = files.filter((file) => modulePath === "." || file === modulePath || file.startsWith(`${modulePath}/`));
+    const uri = repoUri(repo.id, modulePath === "." ? "" : modulePath);
     return {
       id: stableId("module", uri), repoId: repo.id, path: uri, relativePath: modulePath,
       fileCount: owned.length, languages: uniq(owned.map(extensionLanguage)).sort(),
+      contentFingerprint: contentFingerprint(repo.root, owned),
       status: "discovered", responsibility: "", evidence: [],
     };
   }).filter((item) => item.fileCount > 0);
   const entryPoints = files.map((file) => ({ file, kind: entryKind(file) })).filter((item) => item.kind).slice(0, 500)
     .map(({ file, kind }) => {
       const uri = repoUri(repo.id, file);
-      return { id: stableId("entry", uri), repoId: repo.id, path: uri, relativePath: file, kind, status: "discovered", flowIds: [] };
+      return { id: stableId("entry", uri), repoId: repo.id, path: uri, relativePath: file, kind, contentFingerprint: contentFingerprint(repo.root, [file]), status: "discovered", flowIds: [] };
     });
-  const rulePattern = /(^|\/)(AGENTS(?:\.override)?\.md|CLAUDE\.md|\.cursorrules)$|(^|\/)(\.codex|codex-skills|\.cursor|\.claude)\//;
+  const rulePattern = /(^|\/)(AGENTS(?:\.override)?\.md|CLAUDE\.md|\.cursorrules)$|(^|\/)(\.agents|\.codex|codex-skills|\.cursor|\.claude)\//;
   const existingRules = files.filter((file) => rulePattern.test(file))
     .map((file) => ({ path: repoUri(repo.id, file), kind: file.endsWith("SKILL.md") ? "skill" : "agent-rule", repoId: repo.id }));
   return {
     id: repo.id, role: repo.role, root: repo.root, remote: repo.actualRemote,
     head: git(repo.root, ["rev-parse", "HEAD"], ""), branch: git(repo.root, ["branch", "--show-current"], ""),
     files, capabilities, manifests, sourceRoots: sourceRoots.map((root) => repoUri(repo.id, root)),
-    modules, entryPoints, existingRules,
+    contentFingerprint: contentFingerprint(repo.root, files),
+    modules, entryPoints, existingRules, commands,
   };
 }
 
@@ -130,10 +137,8 @@ const repositories = workspace.repositories.map(discover);
 const capabilityNames = uniq(repositories.flatMap((repo) => Object.keys(repo.capabilities)));
 const capabilities = Object.fromEntries(capabilityNames.map((name) => [name, repositories.some((repo) => repo.capabilities[name])]));
 const fingerprint = crypto.createHash("sha256")
-  .update(repositories.map((repo) => `${repo.id}:${repo.head}:${repo.files.length}`).join("\n"))
+  .update(repositories.map((repo) => `${repo.id}:${repo.contentFingerprint}`).join("\n"))
   .digest("hex");
-const previousModules = new Map((previous?.modules || []).map((item) => [item.id, item]));
-const previousEntries = new Map((previous?.entryPoints || []).map((item) => [item.id, item]));
 const now = new Date().toISOString();
 const model = {
   schemaVersion: 2,
@@ -149,9 +154,10 @@ const model = {
   fingerprint,
   capabilities,
   manifests: repositories.flatMap((repo) => repo.manifests),
+  commands: repositories.flatMap((repo) => repo.commands),
   sourceRoots: repositories.flatMap((repo) => repo.sourceRoots),
-  modules: repositories.flatMap((repo) => repo.modules).map((item) => ({ ...item, ...(previousModules.get(item.id) || {}), ...item })),
-  entryPoints: repositories.flatMap((repo) => repo.entryPoints).map((item) => ({ ...item, ...(previousEntries.get(item.id) || {}), ...item })),
+  modules: mergeDiscovered(repositories.flatMap((repo) => repo.modules), previous?.modules),
+  entryPoints: mergeDiscovered(repositories.flatMap((repo) => repo.entryPoints), previous?.entryPoints),
   existingRules: repositories.flatMap((repo) => repo.existingRules),
   criticalFlows: previous?.criticalFlows || [],
   boundaries: previous?.boundaries || [],
@@ -173,7 +179,8 @@ const model = {
       : { enabled: false },
   },
   research: previous?.research
-    ? { ...previous.research, stale: previous.fingerprint !== fingerprint }
+    ? { ...previous.research, stale: previous.research.stale || previous.fingerprint !== fingerprint,
+        status: previous.fingerprint !== fingerprint ? "stale" : previous.research.status }
     : { status: "pending", completedTaskIds: [], stale: false },
   skillPlan: previous?.skillPlan || { selectedSeeds: [], targetSkills: [] },
 };

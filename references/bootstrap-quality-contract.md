@@ -1,5 +1,7 @@
 # Bootstrap 10/10 Quality Contract
 
+Текущие исполняемые условия определены в [executable-contract.md](executable-contract.md) и `scripts/lib/build-contract.js`. JSON scorecard проверяет полноту/свежесть артефактов; 10/10 не доказывает истинность исследования, отсутствие дефектов или senior-уровень. Rubric ниже — критерии ручного review. Нет обязательного количества рисков, строк или flows: отсутствие подтверждённых дефектов допустимо.
+
 Используй этот reference в первом bootstrap, deep research, docs generation, skills assembly, validation и acceptance.
 
 Цель - не "формально установить toolkit", а получить систему уровня strong senior engineer, которую можно отдать другой команде без ручной доводки.

@@ -2,7 +2,33 @@
 
 Эта папка — переносимый bootstrap toolkit для создания project-specific AI-agent operating system. Он поддерживает как установку внутри одного проекта, так и отдельный sidecar-репозиторий для нескольких customer-code репозиториев.
 
+## Разработка самого toolkit
+
+Если текущая задача — исправить исходники toolkit, оставайся в этом корне: локальная инструкция находится в `skills/project-agent-bootstrap/SKILL.md`. Это не установка в customer project: не запускай wizard и не создавай здесь generated `codex-skills` или `docs/agent-system`.
+
+Полный тестовый прогон: `node tests/run-all-tests.js` или `npm test`. Нужны Node.js 22+, Git и Bash; устанавливать npm-зависимости не требуется. Актуальные гарантии, формат evidence, repair и миграция старых установок описаны в [исполняемом контракте](references/executable-contract.md).
+
 ## Sidecar Workspace
+
+### Обновление существующей установки
+
+Локальная версия 0.3.0 добавляет два режима: Full (fresh deep scan, новая RAG/skills, сброс старой рабочей истории из активного контекста) и бережный incremental (критичные исправления без сноса). При запуске агент спрашивает режим, если он не выбран явно. MCP-серверы, credentials/config/runtime, Git/CI/storage настройки сохраняются; основная идея проекта остаётся в коротком project intent. Хранение независимо: отдельный Git или личная папка без Git. Это не автоматический rebuild/migration engine: границы реализации указаны ниже.
+
+Для обновления открой локальный `skills/project-agent-update/SKILL.md`, не запускай install wizard повторно. Update Mode сначала проверяет разделение: наши skills/RAG должны быть вне customer Git. Если назначения ещё нет, агент спрашивает «отдельный Git-репозиторий или локально у тебя без коммитов/push?» Для Git запрашивает URL/checkout; для local создаёт отдельную постоянную папку, `.gitignore` и `agent-storage.json` с publication=never после выбора безопасного пути. Валидный сохранённый выбор повторно не запрашивается.
+
+Read-only preflight из целевого project root:
+
+```bash
+node reusable-agent-system-toolkit/scripts/bootstrap.js update . --check
+node reusable-agent-system-toolkit/scripts/bootstrap.js update . --mode incremental --check
+node reusable-agent-system-toolkit/scripts/bootstrap.js update . --mode full --check
+```
+
+Для Git sidecar используй toolkit path из `workspace.json`, для local — из `agent-storage.json`; `.` оставь storage root. JSON schemaVersion=3: `updateMode` отделён от storage, без --mode статус `needs-update-mode`. Exit code 0 — выбран режим и нет separation blockers; 2 — нужен выбор/review/перенос или есть pending cleanup; 1 — ошибка. Для Full в проверенном storage есть read-only план rebuild/retire/preserve/review, но никаких удалений/deep scan/переключения по команде. Агент работает по [выбору режима](references/update-modes.md), [full workflow](references/full-update.md) либо [incremental workflow](references/incremental-update.md). Автоматического `--apply` нет.
+
+Согласованный перенос сохраняет клиентские правила, проверяет копии/ссылки до удаления наших материалов из customer worktree. При Git storage коммиты раздельные, при запрошенном push — ссылки на оба MR/PR без пустых MR; клиентский MR следует местной policy. При [local storage](references/local-agent-storage.md) ничего не stage/commit/push во время переноса: всё агентское остаётся в личной папке, customer cleanup (если tracked) — незакоммиченным diff. Agent remote/MR не нужен. Full bootstrap compiler для non-Git storage пока не поддержан; доступны агентский перенос, preflight, разрешение source URI и защищённый local runtime.
+
+### Размещение
 
 Sidecar режим нужен, когда исходный код принадлежит заказчику, а RAG, документация, skills и правила команды должны храниться во внутреннем Git. Artifact repository содержит `workspace.json`; customer repositories и toolkit остаются соседними Git-корнями.
 
@@ -27,9 +53,9 @@ node bin/agentctl.js integrations configure /absolute/path/to/.env
 node bin/agentctl.js sync
 ```
 
-`agentctl integrations configure` сохраняет только путь до env в ignored `.local/integrations.json`, устанавливает dependency-free STDIO MCP в пользовательский Codex config и выполняет read-only probes Jira, Confluence, GitLab и Figma. Значения токенов не копируются в Git или MCP config. `agentctl sync` делает только `git pull --ff-only` внутреннего agent-system по уже настроенному SSH и обновляет локальные ссылки. Customer repositories он не переключает и не обновляет. `agentctl status` сравнивает их HEAD с RAG snapshot, а `commit-plan` блокирует agent artifacts в Git заказчика.
+`agentctl integrations configure` сохраняет только путь до env в ignored `.local/integrations.json`, устанавливает dependency-free STDIO MCP в пользовательский Codex config и выполняет read-only probes Jira, Confluence, GitLab и Figma. Значения токенов не копируются в Git или MCP config. `agentctl sync` делает только `git pull --ff-only` внутреннего agent-system по уже настроенному SSH и обновляет локальные ссылки. Customer repositories он не переключает и не обновляет. `agentctl status` сравнивает HEAD, Git-index и содержимое source с snapshot; неизвестный snapshot даёт unknown. `commit-plan` блокирует agent artifacts в Git заказчика.
 
-Для внутренних HTTPS с корпоративным CA env может задать `ENTERPRISE_CA_FILE=/absolute/path/company-ca.pem`. Локальный MCP получает его через `NODE_EXTRA_CA_CERTS`; проверка сертификата никогда не отключается.
+Для внутренних HTTPS с корпоративным CA env может задать `ENTERPRISE_CA_FILE=/absolute/path/company-ca.pem`. Локальный MCP получает его через `NODE_EXTRA_CA_CERTS`; проверка сертификата включена по умолчанию, кроме явно заданного legacy-исключения ниже.
 
 Legacy GitLab с уже принятой project policy `sslVerify=false` может быть указан exact origin в `workspace.json` → `integrations.insecureTlsOrigins`. Исключение действует только на этот GitLab origin и не меняет TLS Jira, Confluence, Figma или других GitLab instances.
 
@@ -37,7 +63,7 @@ Git clone/fetch/push не зависят от GitLab API probe. Sidecar испо
 
 Default required enterprise APIs: Jira, Confluence и Figma. GitLab REST optional; он не участвует в решении, может ли агент читать, ветвить и публиковать код через Git remote.
 
-Ни один sidecar script не должен писать в customer-code repositories. Эта граница проверяется snapshot/verify gate до commit.
+Sidecar generation не пишет в customer worktree. Эта граница проверяется content-based snapshot/verify gate до commit. Явно запрошенный enterprise configure может настраивать credential helper и TLS policy в локальном customer `.git/config`; это не право менять customer code. Git doctor проверяет remote read access, но не доказывает право push.
 
 ## Project-local Mode
 
@@ -83,9 +109,7 @@ node reusable-agent-system-toolkit/scripts/bootstrap.js status .
 Проверка самого toolkit на временном fixture-проекте:
 
 ```bash
-node reusable-agent-system-toolkit/tests/run-tests.js
-node reusable-agent-system-toolkit/tests/run-sidecar-tests.js
-node reusable-agent-system-toolkit/tests/run-enterprise-tests.js
+node reusable-agent-system-toolkit/tests/run-all-tests.js
 ```
 
 Первый запуск toolkit в новом проекте должен быть full project research-code-review: агент изучает стек, архитектуру, data flow, зависимости, security/privacy, performance/resource leaks, testing/CI, critical flows и risk zones, затем создает полный русскоязычный отчет, risk register, refactor plan и smoke checklist. Быстрый обзор стека не считается успешным bootstrap.
@@ -113,7 +137,7 @@ Research должен идти по воспроизводимому алгор�
 
 Если в sidecar toolkit нет `templates/workspace/enterprise-mcp.template.js` или `templates/workspace/agentctl.template.js`, это stale/incomplete toolkit copy. Для project-local helper mode аналогично обязательны `templates/enterprise-scripts/*`. Агент должен остановиться и попросить обновить toolkit.
 
-В конце project-local установки bootstrap обязан добавить `reusable-agent-system-toolkit/` в `.gitignore` целевого проекта. В sidecar режиме это правило не применяется: toolkit и agent-system являются отдельными внутренними репозиториями, а customer-code репозитории не изменяются вообще.
+В конце project-local установки bootstrap обязан добавить `reusable-agent-system-toolkit/` в `.gitignore` целевого проекта. В sidecar режиме это правило не применяется: toolkit и agent-system являются отдельными внутренними репозиториями, а customer-code репозитории не изменяются при обычной генерации. Отдельное узкое исключение — проверенный cleanup при согласованном переносе по `references/repository-separation.md`.
 
 Важно: если deep scan подтвержден, bootstrap не останавливается за approval между этапами. Агент сначала досконально изучает проект, формирует full project research report и research evidence pack, подтверждает coverage/depth criteria, затем создает RAG базу, project docs и только после этого генерирует skills/maps/modes.
 

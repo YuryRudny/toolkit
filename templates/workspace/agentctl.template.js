@@ -3,10 +3,19 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync, spawnSync } = require("child_process");
+const { gitSourceState } = require("./lib/source-state");
+const { isInside, realOrResolved } = require("./lib/workspace");
+const { resolveInside } = require("./lib/path-safety");
+const { inspectRepository } = require("./lib/repository-separation");
+const { LOCAL_MANIFEST, runLocalCommand } = require("./lib/local-storage");
 
 const artifactRoot = path.resolve(__dirname, "..");
+// Local storage never falls through to Git-backed install, sync or integration setup.
+if (fs.existsSync(path.join(artifactRoot, LOCAL_MANIFEST))) {
+  try { process.exit(runLocalCommand(artifactRoot, process.argv.slice(2))); }
+  catch (error) { console.error(error.message); process.exit(1); }
+}
 const manifestPath = path.join(artifactRoot, "workspace.json");
-const forbiddenAgentArtifact = /(^|\/)(AGENTS(?:\.override)?\.md|\.agents|\.codex|codex-skills|docs\/agent-system|reusable-agent-system-toolkit)(\/|$)/;
 const enterpriseServerPath = path.join(artifactRoot, "bin", "enterprise-mcp.js");
 const gitCredentialHelperPath = path.join(artifactRoot, "bin", "git-credential-env.js");
 
@@ -22,7 +31,7 @@ function readJson(file) {
 
 function git(cwd, args, fallback = null) {
   try {
-    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trimEnd();
   } catch (error) {
     if (fallback !== null) return fallback;
     fail(`git ${args.join(" ")} failed in ${cwd}: ${String(error.stderr || error.message).trim()}`);
@@ -49,15 +58,15 @@ function remoteOrigin(value) {
 function resolveWorkspace() {
   const manifest = readJson(manifestPath);
   const local = manifest.localIntegration || {};
-  const workspaceRoot = path.resolve(artifactRoot, local.workspaceRoot || "..");
+  const workspaceRoot = realOrResolved(path.resolve(artifactRoot, local.workspaceRoot || ".."));
   const artifactRemote = git(artifactRoot, ["remote", "get-url", "origin"], "");
   if (normalizeRemote(artifactRemote) !== normalizeRemote(manifest.artifactRepository.remote)) {
     fail(`Artifact remote mismatch: expected ${manifest.artifactRepository.remote}, got ${artifactRemote || "<none>"}`);
   }
   const repositories = manifest.repositories.map((repo) => {
-    const root = path.resolve(artifactRoot, repo.path);
+    const root = realOrResolved(path.resolve(artifactRoot, repo.path));
     if (!fs.existsSync(root)) fail(`Missing customer repository ${repo.id}: ${root}`);
-    const gitRoot = path.resolve(git(root, ["rev-parse", "--show-toplevel"]));
+    const gitRoot = realOrResolved(git(root, ["rev-parse", "--show-toplevel"]));
     if (gitRoot !== root) fail(`${repo.id} path is not its Git root: ${root}`);
     const remote = git(root, ["remote", "get-url", "origin"], "");
     if (normalizeRemote(remote) !== normalizeRemote(repo.remote)) {
@@ -91,6 +100,16 @@ function install() {
   const workspace = resolveWorkspace();
   const agentsFile = path.resolve(workspace.workspaceRoot, workspace.local.agentsFile || "AGENTS.md");
   const skillsDirectory = path.resolve(workspace.workspaceRoot, workspace.local.skillsDirectory || ".agents/skills");
+  for (const target of [agentsFile, skillsDirectory]) {
+    // Validate the link location, not its existing (legitimate) artifact target.
+    const location = path.join(realOrResolved(path.dirname(target)), path.basename(target));
+    if (!isInside(workspace.workspaceRoot, path.dirname(location))) fail(`Local integration escapes workspace root: ${target}`);
+    if (workspace.repositories.some((repo) => isInside(repo.root, location) || isInside(location, repo.root))) fail(`Local integration would write into customer repository: ${target}`);
+    if (isInside(artifactRoot, location)) fail(`Local integration must be outside artifact repository: ${target}`);
+    const stat = fs.lstatSync(target, { throwIfNoEntry: false });
+    const desiredTarget = target === agentsFile ? path.join(artifactRoot, "AGENTS.md") : path.join(artifactRoot, "codex-skills", "skills");
+    if (stat && (!stat.isSymbolicLink() || fs.readlinkSync(target) !== relativeTarget(target, desiredTarget))) fail(`Refusing to replace local path: ${target}`);
+  }
   const agentsResult = ensureLink(agentsFile, path.join(artifactRoot, "AGENTS.md"));
   const skillsResult = ensureLink(skillsDirectory, path.join(artifactRoot, "codex-skills", "skills"));
   console.log(`Local integration ready: AGENTS.md ${agentsResult}; skills ${skillsResult}`);
@@ -124,11 +143,9 @@ function integrationSettings(manifest) {
 }
 
 function integrationConfigPath(manifest) {
-  const output = path.resolve(artifactRoot, integrationSettings(manifest).localConfig);
-  if (output !== artifactRoot && !output.startsWith(`${artifactRoot}${path.sep}`)) {
-    fail("integrations.localConfig must stay inside the agent-system repository.");
-  }
-  return output;
+  const relative = integrationSettings(manifest).localConfig;
+  if (!/^\.local\/[a-z0-9-]+\.json$/.test(relative)) fail("integrations.localConfig must be a JSON file directly under .local/");
+  return resolveInside(artifactRoot, relative, "local integration config");
 }
 
 function localIntegrationConfig(manifest) {
@@ -192,7 +209,7 @@ function installEnterpriseMcp(manifest) {
   const settings = integrationSettings(manifest);
   const localConfigPath = integrationConfigPath(manifest);
   const localConfig = localIntegrationConfig(manifest);
-  const codexBin = process.env.BSG_CODEX_BIN || "codex";
+  const codexBin = process.env.AGENT_SYSTEM_CODEX_BIN || process.env.BSG_CODEX_BIN || "codex";
   const existing = spawnSync(codexBin, ["mcp", "get", settings.mcpServerName, "--json"], { encoding: "utf8" });
   if (existing.error?.code === "ENOENT") fail("Codex CLI is not available; cannot install the enterprise MCP server.");
   if (existing.status === 0) {
@@ -226,6 +243,8 @@ function configureIntegrations() {
   const settings = integrationSettings(workspace.manifest);
   const insecureTlsOrigins = settings.insecureTlsOrigins;
   const localConfigPath = integrationConfigPath(workspace.manifest);
+  const ignored = spawnSync("git", ["check-ignore", "-q", "--", path.relative(artifactRoot, localConfigPath)], { cwd: artifactRoot });
+  if (ignored.status !== 0) fail("Local integration config must be untracked and ignored by Git before configuration; add .local/ to the artifact .gitignore.");
   fs.mkdirSync(path.dirname(localConfigPath), { recursive: true, mode: 0o700 });
   fs.writeFileSync(localConfigPath, `${JSON.stringify({
     schemaVersion: 1,
@@ -311,8 +330,8 @@ function integrationDoctor() {
   const missingRequiredApis = (enterprise.missingKinds || []).filter((kind) => kind !== "gitlab");
   const gitlabApiMissing = (enterprise.missingKinds || []).includes("gitlab");
   const failed = requiredApiFailures.length > 0 || missingRequiredApis.length > 0 || nativeGit.status !== "passed";
-  const warnings = gitlabApiFailures.map((item) => `${item.id}: GitLab API context is unavailable; native clone/fetch/push is verified separately.`);
-  if (gitlabApiMissing) warnings.push("GitLab API context is not configured; native clone/fetch/push is verified separately.");
+  const warnings = gitlabApiFailures.map((item) => `${item.id}: GitLab API context is unavailable; native remote read access is probed separately. Push permission is not verified.`);
+  if (gitlabApiMissing) warnings.push("GitLab API context is not configured; native remote read access is probed separately. Push permission is not verified.");
   const result = {
     status: failed ? "failed" : (warnings.length ? "passed-with-warnings" : "passed"),
     enterpriseApi: enterprise,
@@ -372,7 +391,7 @@ function sync() {
   if (result.status !== 0) process.exit(result.status || 1);
   const fresh = spawnSync(process.execPath, [__filename, "install"], { cwd: artifactRoot, stdio: "inherit" });
   if (fresh.status !== 0) process.exit(fresh.status || 1);
-  console.log("Agent system synchronized from Rocketfirm GitLab over SSH.");
+  console.log("Agent system synchronized from its configured artifact remote.");
 }
 
 function status() {
@@ -381,15 +400,15 @@ function status() {
   const baseline = fs.existsSync(baselinePath) ? readJson(baselinePath) : { repositories: [] };
   const expected = new Map((baseline.repositories || []).map((repo) => [repo.id, repo]));
   const repositories = workspace.repositories.map((repo) => {
-    const head = git(repo.root, ["rev-parse", "HEAD"], "");
+    const { head, digest, status } = gitSourceState(repo.root);
     const saved = expected.get(repo.id);
     return {
       id: repo.id,
       branch: git(repo.root, ["branch", "--show-current"], ""),
       head,
       knowledgeHead: saved?.head || null,
-      knowledgeStatus: saved ? (saved.head === head ? "current" : "stale") : "unknown",
-      worktreeClean: !git(repo.root, ["status", "--porcelain=v1", "-uall"], ""),
+      knowledgeStatus: saved?.digest ? (saved.digest === digest ? "current" : "stale") : "unknown",
+      worktreeClean: !status,
     };
   });
   console.log(JSON.stringify({
@@ -397,7 +416,7 @@ function status() {
     agentSystemHead: git(artifactRoot, ["rev-parse", "HEAD"], ""),
     agentSystemBranch: git(artifactRoot, ["branch", "--show-current"], ""),
     agentSystemClean: !git(artifactRoot, ["status", "--porcelain=v1", "-uall"], ""),
-    knowledgeStatus: repositories.some((repo) => repo.knowledgeStatus === "stale") ? "stale" : "current",
+    knowledgeStatus: repositories.some((repo) => repo.knowledgeStatus === "stale") ? "stale" : repositories.some((repo) => repo.knowledgeStatus === "unknown") ? "unknown" : "current",
     repositories,
   }, null, 2));
 }
@@ -405,12 +424,12 @@ function status() {
 function commitPlan() {
   const workspace = resolveWorkspace();
   const violations = [];
+  const reviewCandidates = [];
   const customerRepositories = workspace.repositories.map((repo) => {
     const changes = git(repo.root, ["status", "--porcelain=v1", "-uall"], "").split(/\r?\n/).filter(Boolean);
-    for (const change of changes) {
-      const file = change.slice(3).replace(/^"|"$/g, "");
-      if (forbiddenAgentArtifact.test(file)) violations.push({ repository: repo.id, file });
-    }
+    const inventory = inspectRepository(repo.root, { includeIgnored: false });
+    for (const item of inventory.artifacts) violations.push({ repository: repo.id, file: item.path, reason: item.reason });
+    for (const item of inventory.reviewCandidates) reviewCandidates.push({ repository: repo.id, file: item.path, reason: item.reason });
     return { id: repo.id, destination: repo.remote, changes };
   });
   console.log(JSON.stringify({
@@ -421,6 +440,8 @@ function commitPlan() {
     },
     customerRepositories,
     violations,
+    reviewCandidates,
+    limitation: "Ready means no detected toolkit artifacts in the candidate Git state; unknown-origin skills still require ownership review.",
   }, null, 2));
   if (violations.length) process.exit(1);
 }

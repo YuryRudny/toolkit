@@ -20,7 +20,9 @@
     "integrations"
   ],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "enum": [1, 2] },
+    "mode": { "enum": ["project-local", "sidecar-workspace"] },
+    "workspace": { "type": "object" },
     "projectRoot": { "type": "string", "minLength": 1 },
     "generatedAt": { "type": "string", "minLength": 1 },
     "updatedAt": { "type": "string", "minLength": 1 },
@@ -59,7 +61,8 @@
         "path": { "type": "string", "minLength": 1 },
         "fileCount": { "type": "integer", "minimum": 0 },
         "languages": { "type": "array", "items": { "type": "string" } },
-        "status": { "enum": ["discovered", "researched", "not-applicable"] },
+        "status": { "enum": ["discovered", "researched", "not-applicable", "stale"] },
+        "contentFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "responsibility": { "type": "string" },
         "evidence": { "type": "array" }
       }
@@ -71,7 +74,8 @@
         "id": { "type": "string", "minLength": 1 },
         "path": { "type": "string", "minLength": 1 },
         "kind": { "type": "string", "minLength": 1 },
-        "status": { "enum": ["discovered", "traced", "not-applicable"] },
+        "status": { "enum": ["discovered", "traced", "not-applicable", "stale"] },
+        "contentFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "flowIds": { "type": "array", "items": { "type": "string" } }
       }
     }

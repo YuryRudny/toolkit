@@ -4,13 +4,16 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const { contentFingerprint, mergeDiscovered, discoverSourceFiles } = require("./lib/source-state");
+const { resolveInside } = require("./lib/path-safety");
 
 const root = path.resolve(process.argv[2] || process.cwd());
-const outPath = path.join(root, "docs", "agent-system", "project-model.json");
+if (fs.existsSync(path.join(root, "workspace.json"))) throw new Error("Sidecar workspace requires create-workspace-model");
+const outPath = resolveInside(root, "docs/agent-system/project-model.json", "model output");
 const skipDirs = new Set([
   ".git", "node_modules", ".nuxt", ".next", ".output", "dist", "build",
-  "coverage", "vendor", ".venv", "venv", "target", "bin", "obj",
-  ".yarn", ".tmp", ".idea", "reusable-agent-system-toolkit",
+  "coverage", "vendor", ".venv", "venv", "target", "obj",
+  ".yarn", ".tmp", ".idea", ".gradle", "reusable-agent-system-toolkit",
 ]);
 
 function walk(dir, acc = []) {
@@ -18,6 +21,7 @@ function walk(dir, acc = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (skipDirs.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) continue;
     const rel = path.relative(root, full);
     if (entry.isDirectory() && (rel === "docs/agent-system" || rel === "codex-skills")) continue;
     if (entry.isDirectory()) walk(full, acc);
@@ -88,11 +92,6 @@ function kindForEntry(file) {
   return null;
 }
 
-function mergeById(discovered, previous) {
-  const old = new Map((previous || []).map((item) => [item.id, item]));
-  return discovered.map((item) => ({ ...item, ...(old.get(item.id) || {}), ...item }));
-}
-
 const files = walk(root).sort();
 const packageJson = readJson("package.json") || {};
 const deps = { ...(packageJson.dependencies || {}), ...(packageJson.devDependencies || {}) };
@@ -157,15 +156,17 @@ for (const sourceRoot of uniq(sourceRoots)) {
   if (!fs.existsSync(absolute) || !fs.statSync(absolute).isDirectory()) continue;
   const children = fs.readdirSync(absolute, { withFileTypes: true }).filter((entry) => entry.isDirectory());
   if (children.length) children.forEach((entry) => modulePaths.push(path.join(sourceRoot, entry.name)));
-  else modulePaths.push(sourceRoot);
+  if (!children.length || files.some((file) => path.dirname(file) === sourceRoot && extensionLanguage(file))) modulePaths.push(sourceRoot);
 }
+if (!modulePaths.length && files.some(extensionLanguage)) modulePaths.push(".");
 
 const discoveredModules = uniq(modulePaths).map((modulePath) => {
-  const owned = files.filter((file) => file === modulePath || file.startsWith(`${modulePath}/`));
+  const owned = files.filter((file) => modulePath === "." || file === modulePath || file.startsWith(`${modulePath}/`));
   return {
     id: stableId("module", modulePath),
     path: modulePath,
     fileCount: owned.length,
+    contentFingerprint: contentFingerprint(root, owned),
     languages: uniq(owned.map(extensionLanguage)).sort(),
     status: "discovered",
     responsibility: "",
@@ -180,18 +181,19 @@ const discoveredEntries = files
   .map(({ file, kind }) => ({
     id: stableId("entry", file),
     path: file,
+    contentFingerprint: contentFingerprint(root, [file]),
     kind,
     status: "discovered",
     flowIds: [],
   }));
 
 const rulePatterns = [
-  /^AGENTS\.md$/, /(^|\/)CLAUDE\.md$/, /^\.cursorrules$/,
+  /(^|\/)AGENTS(?:\.override)?\.md$/, /(^|\/)CLAUDE\.md$/, /^\.cursorrules$/,
   /^\.github\/copilot-instructions\.md$/,
-  /(^|\/)(\.codex|codex-skills|\.cursor|\.claude)\//,
+  /(^|\/)(\.agents|\.codex|codex-skills|\.cursor|\.claude)\//,
 ];
 const separateRuleFiles = [];
-for (const rel of ["AGENTS.md", ".codex", "codex-skills", ".cursor", ".claude", ".github/copilot-instructions.md", "CLAUDE.md", ".cursorrules"]) {
+for (const rel of ["AGENTS.md", ".agents", ".codex", "codex-skills", ".cursor", ".claude", ".github/copilot-instructions.md", "CLAUDE.md", ".cursorrules"]) {
   const absolute = path.join(root, rel);
   if (!fs.existsSync(absolute)) continue;
   if (fs.statSync(absolute).isDirectory()) walk(absolute, separateRuleFiles);
@@ -201,13 +203,8 @@ const existingRules = uniq([...files, ...separateRuleFiles])
   .filter((file) => rulePatterns.some((pattern) => pattern.test(file)))
   .map((file) => ({ path: file, kind: file.endsWith("SKILL.md") ? "skill" : "agent-rule" }));
 
-const fingerprintFiles = files.filter((file) => !rulePatterns.some((pattern) => pattern.test(file)));
-const fingerprint = crypto.createHash("sha256")
-  .update(fingerprintFiles.map((file) => {
-    const stat = fs.statSync(path.join(root, file));
-    return `${file}:${stat.size}:${Math.floor(stat.mtimeMs)}`;
-  }).join("\n"))
-  .digest("hex");
+const fingerprintFiles = discoverSourceFiles(root);
+const fingerprint = contentFingerprint(root, fingerprintFiles);
 
 const previous = readExisting();
 const now = new Date().toISOString();
@@ -220,8 +217,8 @@ const model = {
   capabilities,
   manifests,
   sourceRoots: uniq(sourceRoots),
-  modules: mergeById(discoveredModules, previous?.modules),
-  entryPoints: mergeById(discoveredEntries, previous?.entryPoints),
+  modules: mergeDiscovered(discoveredModules, previous?.modules),
+  entryPoints: mergeDiscovered(discoveredEntries, previous?.entryPoints),
   existingRules,
   criticalFlows: previous?.criticalFlows || [],
   boundaries: previous?.boundaries || [],
@@ -234,7 +231,10 @@ const model = {
     },
     ...(previous?.integrations || {}),
   },
-  research: previous?.research || { status: "pending", completedTaskIds: [], stale: false },
+  research: previous?.research
+    ? { ...previous.research, stale: previous.research.stale || previous.fingerprint !== fingerprint,
+        status: previous.fingerprint !== fingerprint ? "stale" : previous.research.status }
+    : { status: "pending", completedTaskIds: [], stale: false },
   skillPlan: previous?.skillPlan || { selectedSeeds: [], targetSkills: [] },
 };
 

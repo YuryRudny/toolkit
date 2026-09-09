@@ -20,8 +20,12 @@ function run(script, args = []) {
 const commands = {
   init: () => run("bootstrap-state.js", ["init", projectRoot]),
   status: () => run("bootstrap-state.js", ["status", projectRoot]),
+  update: () => run("check-update.js", [projectRoot, ...extra]),
   "set-install-mode": () => run("bootstrap-state.js", ["set-install-mode", projectRoot, extra[0]]),
   "complete-phase": () => run("bootstrap-state.js", ["complete-phase", projectRoot, extra[0]]),
+  "repair-phase": () => run("bootstrap-state.js", ["repair-phase", projectRoot, extra[0]]),
+  block: () => run("bootstrap-state.js", ["block", projectRoot, ...extra]),
+  unblock: () => run("bootstrap-state.js", ["unblock", projectRoot]),
   "create-model": () => run("create-project-model.js", [projectRoot]),
   "create-workspace-model": () => run("create-workspace-model.js", [projectRoot]),
   "workspace-snapshot": () => run("workspace-guard.js", ["snapshot", projectRoot]),
@@ -46,9 +50,10 @@ const commands = {
   "render-skills": () => run("render-skills.js", [projectRoot, ...extra]),
   "build-registry": () => run("create-skill-registry.js", [projectRoot]),
   "build-authority": () => run("create-authority-map.js", [projectRoot]),
+  "adopt-output": () => run("adopt-generated-output.js", [projectRoot, ...extra]),
   "quality-report": () => run("generate-quality-report.js", [projectRoot]),
   validate: () => run("validate-generated-agent-system.js", [projectRoot]),
-  test: () => run(path.join("..", "tests", "run-tests.js"), []),
+  test: () => run(path.join("..", "tests", "run-all-tests.js"), []),
 };
 
 if (!commands[command]) {

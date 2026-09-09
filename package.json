@@ -1,0 +1,13 @@
+{
+  "name": "reusable-agent-system-toolkit",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Dependency-free compiler and validation pipeline for project-local and sidecar agent systems",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node tests/run-all-tests.js",
+    "test:regression": "node tests/run-regression-tests.js",
+    "test:update": "node tests/run-update-tests.js",
+    "test:enterprise": "node tests/run-enterprise-tests.js"
+  }
+}

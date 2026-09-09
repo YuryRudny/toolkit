@@ -5,7 +5,15 @@ description: Запускает внедрение reusable AI-agent operating s
 
 # Project Agent Bootstrap
 
+## Обслуживание Самого Toolkit
+
+Если пользователь просит менять или проверять код самого toolkit и текущий корень содержит `scripts/bootstrap.js`, `MANIFEST.md` и этот `skills/project-agent-bootstrap/SKILL.md`, это maintenance-задача, а не установка. Прочитай `references/executable-contract.md`, работай с исходниками и тестами; не запускай install wizard, `init` или self-generation `codex-skills`/`docs/agent-system`. Требование вложенного пути ниже относится только к установке toolkit внутрь другого проекта.
+
+При установке текущий runtime-контракт из `references/executable-contract.md` уточняет порядок команд и форматы данных ниже: structured evidence обязательно, generation требует Docs/RAG Ready, пользовательские правки защищены ownership preflight, quality score — только проверяемый контракт, не доказательство инженерного качества.
+
 ## Path-First Launch Contract
+
+Если задача — обновить уже установленную агентскую систему, не запускай этот install wizard. Используй соседний `../project-agent-update/SKILL.md`: он проверяет разделение, спрашивает место хранения (отдельный Git или local папка без Git), сохраняет хорошие проектные skills и не требует remote у local storage. Обычный sidecar остаётся read-only для customer code; согласованный migration cleanup имеет узкое исключение из `../../references/repository-separation.md` и не разрешает правки продукта. Local update не запускает этот Git-only install wizard.
 
 Bootstrap поддерживает два явных режима.
 
@@ -77,6 +85,7 @@ State machine проверяет prerequisites и отклоняет перех�
 ## Обязательные Чтения
 
 - `reusable-agent-system-toolkit/MANIFEST.md`
+- `reusable-agent-system-toolkit/references/executable-contract.md`
 - `reusable-agent-system-toolkit/README.md`
 - `reusable-agent-system-toolkit/references/bootstrap-strict-algorithm.md`
 - `reusable-agent-system-toolkit/references/research-mode-guide.md`
@@ -175,7 +184,7 @@ State machine проверяет prerequisites и отклоняет перех�
    - после full skills запусти `node reusable-agent-system-toolkit/scripts/bootstrap.js render-operational .`; router будет скомпилирован из фактического `skill-registry.json` и не сможет ссылаться на отсутствующие skills;
    - эта же команда обязана создать или обновить managed-блок корневого `AGENTS.md`; отдельное ручное создание entrypoint запрещено;
    - проверь, что `AGENTS.md` требует читать `codex-skills/skills/workflow-router/SKILL.md` до исходников, команд и git/network действий, даже если project-local skills отсутствуют в системном `Available skills`;
-   - `node reusable-agent-system-toolkit/scripts/check-bootstrap-state.js .`.
+   - `check-bootstrap-state.js` запускай после quality-report и validate; он повторяет финальную проверку, а не только проверяет наличие state.
    Не пиши full-install `SKILL.md` руками. Markdown skills и assembly sheets должен создавать renderer из structured inputs. При degraded install разрешены только minimal generic skills с `degraded install` warning и обязательным future research gate.
 21. Создай `docs/agent-system/bootstrap-quality-report.md` командой `node reusable-agent-system-toolkit/scripts/bootstrap.js quality-report .`.
    - Баллы вычисляет toolkit из project model, research task graph, RAG, registry и skill inputs; не выставляй их вручную.

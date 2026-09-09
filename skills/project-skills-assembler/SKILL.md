@@ -5,6 +5,12 @@ description: Собирает project-local skills по строгому render 
 
 # Project Skills Assembler
 
+## Исполняемый Контракт
+
+Перед сборкой прочитай `reusable-agent-system-toolkit/references/executable-contract.md`. Текущий renderer использует layout `templates/skills/compiled-skill.template.md`; role-specific `.full.template.md` ниже служат design references при заполнении input. Runtime-секции строятся из v2 fields, в том числе workflowSteps, без подмены авторского workflow. Это уточнение имеет приоритет над старым термином «full template render» ниже.
+
+Не обходи ownership conflict через автоматический adopt-output. Принятие файла под управление требует явного решения владельца. Сохраняй authored drafts; после изменения model проведи re-adaptation и обнови projectFingerprint.
+
 ## Нулевой Закон Assembly
 
 Агент не пишет full-install skills. Агент заполняет structured inputs, а toolkit рендерит full-install skills.
@@ -122,9 +128,9 @@ target skill -> docs/agent-system/skill-inputs/<skill-name>.json -> extract-seed
    - Если input готов, renderer создаст `codex-skills/skills/<skill-name>/SKILL.md`, `docs/agent-system/skill-assembly/<skill-name>.md` и skill-specific reference.
 7. Перейди к следующему skill и повтори шаги 2-5.
 8. После всей очереди запусти `node reusable-agent-system-toolkit/scripts/bootstrap.js render-operational .`, чтобы пересобрать registry/router из реально созданных skills.
-9. Запусти `node reusable-agent-system-toolkit/scripts/check-bootstrap-state.js .`.
-10. Создай вычисляемый report командой `node reusable-agent-system-toolkit/scripts/bootstrap.js quality-report .`.
-11. Запусти `node reusable-agent-system-toolkit/scripts/bootstrap.js validate .`.
+9. Для sidecar создай workspace runtime до quality-report.
+10. Создай вычисляемые JSON/Markdown reports командой `node reusable-agent-system-toolkit/scripts/bootstrap.js quality-report .`.
+11. Запусти `node reusable-agent-system-toolkit/scripts/bootstrap.js validate .`, затем `node reusable-agent-system-toolkit/scripts/check-bootstrap-state.js .`.
 
 Markdown skills и assembly sheets руками не создавай. Ручная работа агента - найти evidence и заполнить structured inputs.
 

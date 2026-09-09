@@ -3,12 +3,12 @@
 const fs = require("fs");
 const path = require("path");
 const { loadWorkspace, readJson, sourceSnapshot, sourceStatus, writeArtifact, git } = require("./lib/workspace");
+const { inspectRepository } = require("./lib/repository-separation");
 
 const workspace = loadWorkspace(process.argv[3] || process.argv[2] || process.cwd());
 const command = process.argv[2] || "status";
 const snapshotRel = "docs/agent-system/source-snapshot.json";
 const resultRel = "docs/agent-system/source-boundary-result.json";
-const forbidden = /(^|\/)(AGENTS(?:\.override)?\.md|\.agents|\.codex|codex-skills|docs\/agent-system|reusable-agent-system-toolkit)(\/|$)/;
 
 function snapshot() {
   const value = sourceSnapshot(workspace);
@@ -28,7 +28,7 @@ function verify() {
     if (!saved) changes.push({ id: repo.id, reason: "missing baseline" });
     else {
       if (saved.head !== current.head) changes.push({ id: repo.id, reason: "HEAD changed", before: saved.head, after: current.head });
-      if (saved.status !== current.status) changes.push({ id: repo.id, reason: "worktree changed", before: saved.status, after: current.status });
+      if (saved.digest !== current.digest) changes.push({ id: repo.id, reason: "source content or index changed", before: saved.digest, after: current.digest });
     }
   }
   const result = {
@@ -53,12 +53,12 @@ function status() {
 
 function commitPlan() {
   const violations = [];
+  const reviewCandidates = [];
   const repositories = workspace.repositories.map((repo) => {
-    const lines = git(repo.root, ["status", "--porcelain=v1", "-uall"], "").split(/\r?\n/).filter(Boolean);
-    for (const line of lines) {
-      const file = line.slice(3).replace(/^"|"$/g, "");
-      if (forbidden.test(file)) violations.push({ repository: repo.id, file, reason: "agent artifact in customer Git" });
-    }
+    const lines = git(repo.root, ["status", "--porcelain=v1", "-uall"], null).split(/\r?\n/).filter(Boolean);
+    const inventory = inspectRepository(repo.root, { includeIgnored: false });
+    for (const item of inventory.artifacts) violations.push({ repository: repo.id, file: item.path, reason: item.reason });
+    for (const item of inventory.reviewCandidates) reviewCandidates.push({ repository: repo.id, file: item.path, reason: item.reason });
     return { id: repo.id, role: repo.role, remote: repo.actualRemote, changes: lines };
   });
   const artifactChanges = git(workspace.artifactRoot, ["status", "--porcelain=v1", "-uall"], "").split(/\r?\n/).filter(Boolean);
@@ -67,6 +67,8 @@ function commitPlan() {
     artifactRepository: { id: workspace.artifact.id, role: "internal-knowledge", remote: workspace.artifact.actualRemote, changes: artifactChanges },
     repositories,
     violations,
+    reviewCandidates,
+    limitation: "Ready means no detected toolkit artifacts in the candidate Git state; unknown-origin skills still require ownership review.",
     status: violations.length ? "blocked" : "ready",
   };
   console.log(JSON.stringify(plan, null, 2));

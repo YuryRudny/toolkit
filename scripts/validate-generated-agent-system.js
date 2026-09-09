@@ -2,6 +2,11 @@
 
 const fs = require("fs");
 const path = require("path");
+const { modelFailures, docsFailures, requiredRoles, artifactFingerprint, sourceFingerprint, evaluateQuality } = require("./lib/build-contract");
+const { researchFailures } = require("./lib/research-evidence");
+const { resolveInside } = require("./lib/path-safety");
+const { resolveSourcePath } = require("./lib/workspace");
+const { hasSectionExemption } = require("./lib/input-contract");
 
 const root = process.argv[2] ? path.resolve(process.argv[2]) : process.cwd();
 
@@ -20,6 +25,8 @@ const forbiddenQualityMarkers = [
   /заполнить реальные/i,
   /TaskList/i,
   /className/i,
+  /Заполни при генерации/i,
+  /<(?:STACK_AREA|RAG_ROWS|DEBUG_RAG_ROWS|REFACTOR_RAG_ROWS|RISK_RAG_ROWS|PATH_OR_FLOW|IMPACT|ACTION)>/,
 ];
 
 const englishMarkers = [
@@ -54,6 +61,7 @@ const requiredOperationalSkills = [
   "review-checklist",
   "stack-quality",
   "git-remote-flow",
+  "agent-system-update",
 ];
 
 const roleSkills = new Set([
@@ -115,6 +123,7 @@ const specializedHeaders = {
 
 function listMarkdownFiles(target) {
   if (!fs.existsSync(target)) return [];
+  if (fs.lstatSync(target).isSymbolicLink()) { failures.push(`${target}: symlink in generated artifacts`); return []; }
   const stat = fs.statSync(target);
   if (stat.isFile()) return target.endsWith(".md") ? [target] : [];
   const out = [];
@@ -177,13 +186,27 @@ const skillsRoot = path.join(root, "codex-skills", "skills");
 const assemblyRoot = path.join(root, "docs", "agent-system", "skill-assembly");
 const inputsRoot = path.join(root, "docs", "agent-system", "skill-inputs");
 const qualityReportPath = path.join(root, "docs", "agent-system", "bootstrap-quality-report.md");
-const validationResultPath = path.join(root, "docs", "agent-system", "validation-result.json");
+const validationResultPath = resolveInside(root, "docs/agent-system/validation-result.json", "validation output");
 const projectModelPath = path.join(root, "docs", "agent-system", "project-model.json");
 const skillRegistryPath = path.join(root, "docs", "agent-system", "skill-registry.json");
 const researchTasksPath = path.join(root, "docs", "agent-system", "research-workspace", "research-tasks.json");
 const researchTasksMarkdownPath = path.join(root, "docs", "agent-system", "research-workspace", "research-tasks.md");
 const bootstrapState = readJsonSafe(path.join(root, "docs", "agent-system", "bootstrap-state.json"));
 const fullInstall = bootstrapState?.installMode !== "degraded";
+if (!bootstrapState || bootstrapState.schemaVersion !== 1 || !["full", "degraded"].includes(bootstrapState.installMode)) failures.push("missing or invalid bootstrap state/installMode");
+if (bootstrapState?.blocked) failures.push("bootstrap is blocked");
+if (!fs.existsSync(skillsRoot)) failures.push("missing codex-skills/skills");
+if (fullInstall) {
+  const model = readJsonSafe(projectModelPath);
+  failures.push(...modelFailures(model), ...docsFailures(root), ...researchFailures(root, model, readJsonSafe(researchTasksPath)));
+  for (const name of requiredRoles(model)) {
+    if (!fs.existsSync(path.join(skillsRoot, name, "SKILL.md"))) failures.push(`missing required role skill: ${name}`);
+  }
+  const computed = evaluateQuality(root);
+  const saved = readJsonSafe(path.join(root, "docs/agent-system/bootstrap-quality-report.json"));
+  if (computed.status !== "passed") failures.push(...computed.checks.flatMap((item) => item.failures.map((failure) => `${item.category}: ${failure}`)));
+  if (!saved || JSON.stringify(saved) !== JSON.stringify(computed)) failures.push("quality report is missing, stale or differs from independently computed contract");
+}
 
 function readJsonSafe(file) {
   try {
@@ -194,6 +217,17 @@ function readJsonSafe(file) {
 }
 
 const workspaceManifest = readJsonSafe(path.join(root, "workspace.json"));
+if (!fullInstall) {
+  for (const rel of ["AGENTS.md", "codex-skills/skills/workflow-router/SKILL.md", "codex-skills/skills/project-authority/SKILL.md", "docs/agent-system/current-state.md", "docs/agent-system/stack-profile.md", "docs/agent-system/enterprise-integrations.md"]) {
+    if (!fs.existsSync(path.join(root, rel)) || !fs.readFileSync(path.join(root, rel), "utf8").trim()) failures.push(`degraded install: missing ${rel}`);
+  }
+  if (fs.existsSync(projectEntryPath) && !fs.readFileSync(projectEntryPath, "utf8").includes("Degraded install: deep scan skipped by user")) failures.push("degraded install marker is missing");
+  for (const name of roleSkills) if (fs.existsSync(path.join(skillsRoot, name, "SKILL.md"))) failures.push(`degraded install must not activate full role: ${name}`);
+  writeValidationResult(failures.length ? "failed" : "passed", failures);
+  if (failures.length) console.error(failures.join("\n"));
+  else console.log("Degraded agent system validation passed; full research is unavailable.");
+  process.exit(failures.length ? 1 : 0);
+}
 if (workspaceManifest?.integrations) {
   requiredOperationalSkills.push("enterprise-context");
   if (!fs.existsSync(path.join(root, "bin", "enterprise-mcp.js"))) failures.push("bin/enterprise-mcp.js: missing configured enterprise runtime");
@@ -207,6 +241,8 @@ function writeValidationResult(status, failureList) {
     schemaVersion: 1,
     status,
     checkedAt: new Date().toISOString(),
+    artifactFingerprint: artifactFingerprint(root),
+    sourceFingerprint: fullInstall ? sourceFingerprint(root, readJsonSafe(projectModelPath)) : null,
     failures: failureList,
   }, null, 2)}\n`);
 }
@@ -214,6 +250,7 @@ if (fs.existsSync(skillsRoot)) {
   for (const skill of requiredOperationalSkills) {
     const operationalPath = path.join(skillsRoot, skill, "SKILL.md");
     if (!fs.existsSync(operationalPath)) failures.push(`codex-skills/skills/${skill}/SKILL.md: missing operational skill`);
+    else if (fs.readFileSync(operationalPath, "utf8").match(/^name:\s*([a-z0-9-]+)\s*$/m)?.[1] !== skill) failures.push(`${skill}: frontmatter name differs from output identity`);
   }
   for (const folder of fs.readdirSync(skillsRoot)) {
     if (!roleSkills.has(folder)) continue;
@@ -271,6 +308,7 @@ if (fs.existsSync(skillsRoot)) {
           resultFormat: ["field", "content"],
         };
         for (const [key, fields] of Object.entries(typedArrays)) {
+          if (hasSectionExemption(root, input, key)) continue;
           if (!Array.isArray(input[key]) || input[key].filter(Boolean).length === 0) {
             failures.push(`${relative(inputPath)}: ${key} is empty`);
             continue;
@@ -388,7 +426,7 @@ if (!registry) {
 } else {
   const registryNames = new Set((registry.skills || []).filter((skill) => skill.status === "active").map((skill) => skill.name));
   for (const skill of registry.skills || []) {
-    if (skill.status === "active" && !fs.existsSync(path.join(root, skill.path))) {
+    if (skill.status === "active" && !fs.existsSync(resolveSourcePath(root, skill.path))) {
       failures.push(`skill registry points to missing active skill: ${skill.path}`);
     }
     for (const reference of skill.references || []) {
@@ -440,7 +478,7 @@ if (fs.existsSync(assemblyRoot)) {
 
 if (fs.existsSync(skillsRoot)) {
   const mobileSkill = path.join(skillsRoot, "mobile-capacitor-shell", "SKILL.md");
-  const capEvidence = fs.existsSync(path.join(root, "capacitor.config.ts")) || fs.existsSync(path.join(root, "capacitor.config.json"));
+  const capEvidence = readJsonSafe(projectModelPath)?.capabilities?.capacitor;
   if (fs.existsSync(mobileSkill) && !capEvidence) {
     failures.push("codex-skills/skills/mobile-capacitor-shell/SKILL.md: active mobile skill exists without capacitor.config evidence");
   }
@@ -457,6 +495,7 @@ if (fs.existsSync(skillsRoot)) {
     } else {
       const score = Number(fullScore[1]);
       if (!Number.isFinite(score) || score < 0 || score > 10) failures.push("docs/agent-system/bootstrap-quality-report.md: full quality score must be between 0 and 10");
+      if (fullInstall && score !== 10) failures.push("full install requires all contract categories at 10/10");
     }
     const scoreRows = [
       "Research depth",
@@ -479,6 +518,7 @@ if (fs.existsSync(skillsRoot)) {
       } else {
         const score = Number(match[1]);
         if (!Number.isFinite(score) || score < 0 || score > 10) failures.push(`docs/agent-system/bootstrap-quality-report.md: ${row} score must be between 0 and 10`);
+        if (fullInstall && score !== 10) failures.push(`${row}: full install requires 10/10`);
       }
     }
   }

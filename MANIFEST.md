@@ -1,6 +1,12 @@
 # Manifest
 
+Обслуживание исходников toolkit и установка в целевой проект — разные задачи. В корне самого toolkit инструкция находится в `skills/project-agent-bootstrap/SKILL.md`, тесты запускаются через `node tests/run-all-tests.js`, self-install не выполняется. Текущий формат evidence, ownership, rendering и quality acceptance: [executable-contract.md](references/executable-contract.md).
+
 ## Installation flow
+
+Update сначала требует явный выбор Full или incremental по [update-modes.md](references/update-modes.md). Full пересобирает наши skills/RAG по новому deep scan и исключает старую рабочую историю, сохраняя core intent и MCP/config/access/runtime; rollback checkpoint не становится активной RAG. Incremental ничего не сносит и исправляет только критичные проблемы/необходимую совместимость. Оба режима сохраняют выбранный storage. CLI --mode задаёт только read-only preflight/план, не запускает rebuild и не разрешает автоматическое удаление.
+
+Для существующей установки используй `skills/project-agent-update/SKILL.md`, не повторный install wizard. Обязательное правило update: [отдельное агентское хранение](references/repository-separation.md). Read-only entrypoint — `bootstrap.js update <project-or-storage-root> --check`; при неизвестном назначении спроси: отдельный Git-репозиторий или локальная папка пользователя без Git. Для local действуют [local-agent-storage.md](references/local-agent-storage.md), `.gitignore`, `agent-storage.json` и publication=never: перенос без staging/commit/push в обоих местах. Для Git storage при запрошенной публикации — отдельные коммиты и MR/PR URL каждого изменённого Git. Cleanup в обоих вариантах только по проверенному плану; продуктовый код не меняется.
 
 Sidecar workspace определяется наличием `workspace.json` в Git-корне artifact repository. В этом режиме toolkit path берётся из manifest, customer repositories остаются read-only, а все generated artifacts пишутся в artifact repository.
 

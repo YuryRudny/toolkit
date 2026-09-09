@@ -2,9 +2,12 @@
 
 const fs = require("fs");
 const path = require("path");
+const { resolveInside } = require("./lib/path-safety");
+const { assertGenerationReady } = require("./lib/build-contract");
 
 const root = path.resolve(process.argv[2] || process.cwd());
-const outDir = path.join(root, "docs", "agent-system", "skill-inputs");
+assertGenerationReady(root, "create-skill-inputs");
+const outDir = resolveInside(root, "docs/agent-system/skill-inputs", "skill inputs");
 
 function exists(rel) {
   return fs.existsSync(path.join(root, rel));
@@ -446,20 +449,8 @@ function commandListFor(skillName) {
   });
   const projectCommands = allowed.map((name) => `${name}: ${scripts[name]}`);
   if (projectModel.mode === "sidecar-workspace") {
-    if (/frontend|testing|code-review|debugging/.test(skillName)) {
-      projectCommands.push(
-        "frontend-service: npm run lint",
-        "frontend-service: npm run type-check",
-        "frontend-service: npm run build",
-      );
-    }
-    if (/backend|api-contract|testing|security|code-review|debugging|refactor/.test(skillName)) {
-      projectCommands.push(
-        "Java service: ./gradlew test",
-        "Java service: ./gradlew check",
-        "application-service: ./gradlew integrationTest",
-      );
-    }
+    return (projectModel.commands || []).filter((item) => /lint|test|spec|e2e|type.?check|build|check/i.test(item.name))
+      .map((item) => `${item.directory}: ${item.command} (manifest: ${item.evidence})`);
   }
   return uniq(projectCommands);
 }
@@ -799,6 +790,7 @@ function defaultInput(name, spec) {
     description: spec.description,
     overview: `${spec.description} Работает как project-local senior playbook для области: ${spec.focus}. Все решения должны опираться на RAG, исходники, risk-register, refactor-plan и smoke-checklist проекта.`,
     targetTemplate: spec.template,
+    projectFingerprint: projectModel.fingerprint,
     selectedSeeds: spec.seeds,
     profileId: skillProfile.profileId,
     profileTitle: skillProfile.title,
@@ -900,18 +892,10 @@ for (const [name, payload] of selected) {
     fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`);
   } else {
     const current = readGeneratedJson(`docs/agent-system/skill-inputs/${name}.json`);
-    if (current && current.status === "draft") {
-      current.profileId = payload.profileId;
-      current.profileTitle = payload.profileTitle;
-      current.profileRoles = payload.profileRoles;
-      current.detectedEvidence = payload.detectedEvidence;
-      current.sourceRoots = payload.sourceRoots;
-      current.commands = payload.commands;
-      current.ragRoutes = payload.ragRoutes;
-      current.projectHooks = payload.projectHooks;
-      current.criticalFlows = payload.criticalFlows;
-      current.localRisks = payload.localRisks;
-      current.refactorLinks = payload.refactorLinks;
+    if (current && current.projectFingerprint !== payload.projectFingerprint) {
+      // Preserve authored fields, including drafts. Record a proposal for explicit re-adaptation.
+      current.status = "draft";
+      current.discoveryUpdate = { projectFingerprint: payload.projectFingerprint, detectedEvidence: payload.detectedEvidence, sourceRoots: payload.sourceRoots, commands: payload.commands };
       fs.writeFileSync(filePath, `${JSON.stringify(current, null, 2)}\n`);
     }
   }
